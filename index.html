@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAUUSD KLineChart</title>
+    <!-- Memanggil Library KLineChart via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/klinecharts/dist/klinecharts.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; }
+        #chart { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="chart"></div>
+    <script>
+        // 1. Inisialisasi Chart
+        const chart = klinecharts.init('chart');
+
+        // 2. Data Dummy (Format KLineChart: timestamp dalam milidetik)
+        const dataList = [
+            { timestamp: 1293840000000, open: 1421.2, high: 1422.0, low: 1420.5, close: 1421.5 },
+            { timestamp: 1293840300000, open: 1421.5, high: 1423.0, low: 1421.0, close: 1422.8 },
+            { timestamp: 1293840600000, open: 1422.8, high: 1424.5, low: 1422.0, close: 1424.0 },
+            { timestamp: 1293840900000, open: 1424.0, high: 1424.2, low: 1421.5, close: 1422.0 },
+            { timestamp: 1293841200000, open: 1422.0, high: 1422.5, low: 1419.0, close: 1419.5 }
+        ];
+
+        // 3. Masukkan data ke chart
+        chart.applyNewData(dataList);
+
+        // 4. Tambahkan Indikator (Opsional, untuk tes)
+        chart.createIndicator('MA', false, { id: 'candle_pane' });
+    </script>
+</body>
+</html>
