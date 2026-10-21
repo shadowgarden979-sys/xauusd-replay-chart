@@ -2,12 +2,15 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Kunci zoom browser, tapi izinkan sentuhan (pan) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>XAUUSD Replay Chart</title>
     <script src="https://cdn.jsdelivr.net/npm/klinecharts/dist/klinecharts.min.js"></script>
     <style>
         body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; }
-        #chart { width: 100vw; height: 85vh; }
+        /* PERBAIKAN: Izinkan sentuhan pan (geser), tapi matikan pinch-zoom browser */
+        #chart { width: 100vw; height: 85vh; touch-action: pan-x pan-y; }
+        
         #tf-buttons { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 5px; }
         .tf-btn { background-color: #2B2B43; color: #d1d4dc; border: 1px solid #363A45; padding: 6px 12px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         .tf-btn.active { background-color: #2962FF; color: white; border-color: #2962FF; }
@@ -24,45 +27,40 @@
 
     <div id="chart"></div>
 
-    <!-- Panggil file data eksternal -->
     <script src="data_M5_Jan2011.js"></script>
     <script src="data_M15_Jan2011.js"></script>
     <script src="data_H1_Jan2011.js"></script>
     <script src="data_H4_Jan2011.js"></script>
 
     <script>
-        // Inisialisasi KLineChart
         const chart = klinecharts.init('chart');
         
-        // Konfigurasi X-Axis untuk merapatkan Gap Weekend (Opsi B)
         chart.setStyles({
-            xAxis: { gapRule: 1 }, // 1 = merapatkan gap
-            grid: { 
-                horizontal: { color: '#2B2B43' }, 
-                vertical: { color: '#2B2B43' } 
-            },
+            xAxis: { gapRule: 1 },
+            grid: { horizontal: { color: '#2B2B43' }, vertical: { color: '#2B2B43' } },
             candle: {
                 type: 'candle_solid',
-                bar: {
-                    upColor: '#26a69a',
-                    downColor: '#ef5350',
-                    noChangeColor: '#888888'
-                }
+                bar: { upColor: '#26a69a', downColor: '#ef5350', noChangeColor: '#888888' }
             }
         });
 
-        // Muat data awal (M5)
         chart.applyNewData(data_M5_Jan2011);
+        
+        // Zoom in sedikit saat pertama kali load
+        setTimeout(() => { chart.scrollToDataIndex(data_M5_Jan2011.length - 20); }, 100);
 
-        // Fungsi ganti TF
         function changeTF(tf, btn) {
             document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            if (tf === 'M5') chart.applyNewData(data_M5_Jan2011);
-            if (tf === 'M15') chart.applyNewData(data_M15_Jan2011);
-            if (tf === 'H1') chart.applyNewData(data_H1_Jan2011);
-            if (tf === 'H4') chart.applyNewData(data_H4_Jan2011);
+            let newData = [];
+            if (tf === 'M5') newData = data_M5_Jan2011;
+            if (tf === 'M15') newData = data_M15_Jan2011;
+            if (tf === 'H1') newData = data_H1_Jan2011;
+            if (tf === 'H4') newData = data_H4_Jan2011;
+
+            chart.applyNewData(newData);
+            setTimeout(() => { chart.scrollToDataIndex(newData.length - 20); }, 100);
         }
     </script>
 </body>
