@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tes Chart 4 - Interaktif Drawing</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
+        #chart-container { width: 100vw; height: 85vh; touch-action: none; }
+        #toolbar { padding: 10px; display: flex; gap: 5px; background: #2B2B43; z-index: 10; position: relative; overflow-x: auto; }
+        .btn { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .btn.active { background: #2962FF; }
+    </style>
+    
+    <!-- IMPORT MAP: Buku alamat untuk Library dan Plugin -->
+    <script type="importmap">
+    {
+        "imports": {
+            "lightweight-charts": "https://esm.sh/lightweight-charts@4.1.1",
+            "lightweight-charts-drawing": "https://esm.sh/lightweight-charts-drawing@0.6.2"
+        }
+    }
+    </script>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button class="btn active" id="btn-pan">Pan / Geser</button>
+        <button class="btn" id="btn-line">Garis Trend</button>
+        <button class="btn" id="btn-rect">Kotak</button>
+        <button class="btn" id="btn-fib">Fibonacci</button>
+    </div>
+
+    <div id="chart-container"></div>
+
+    <script type="module">
+        // Memanggil library menggunakan Import Map
+        import { createChart } from 'lightweight-charts';
+        import { DrawingManager } from 'lightweight-charts-drawing';
+
+        // 1. SETUP CHART (Skala Bebas & Interaksi)
+        const container = document.getElementById('chart-container');
+        const chart = createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: { background: { color: '#1e1e1e' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b' },
+            rightPriceScale: { 
+                autoScale: false, // Skala Y bebas
+                borderColor: '#485c7b' 
+            },
+            handleScroll: { 
+                horzTouchDrag: true, 
+                vertTouchDrag: false // Geser kiri/kanan saja di area candle
+            },
+            handleScale: { 
+                axisPressedMouseMove: { price: true } // Tarik Y-axis manual
+            }
+        });
+
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+        });
+
+        // 2. DATA DUMMY
+        const data = [];
+        let baseTime = 1293840000;
+        let price = 1400;
+        for (let i = 0; i < 50; i++) {
+            if (i === 25) baseTime += 48 * 60 * 60;
+            else baseTime += 5 * 60;
+            price = price + (Math.random() - 0.5) * 2;
+            data.push({ time: baseTime, open: price, high: price + 1, low: price - 1, close: price + (Math.random() - 0.5) });
+        }
+        candlestickSeries.setData(data);
+        chart.timeScale().fitContent();
+
+        // 3. SETUP DRAWING MANAGER (Plugin Interaktif)
+        // Plugin ini otomatis menangani logika klik, drag, dan edit titik sudut.
+        const drawingManager = new DrawingManager(chart, candlestickSeries);
+
+        // 4. LOGIKA TOMBOL
+        document.getElementById('btn-pan').onclick = () => {
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-pan').classList.add('active');
+            drawingManager.disable(); // Mematikan mode gambar, kembali ke mode geser chart
+        };
+
+        document.getElementById('btn-line').onclick = () => {
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-line').classList.add('active');
+            drawingManager.setTool('trend-line'); // Nama tool di plugin ini biasanya 'trend-line'
+        };
+
+        document.getElementById('btn-rect').onclick = () => {
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-rect').classList.add('active');
+            drawingManager.setTool('rectangle');
+        };
+
+        document.getElementById('btn-fib').onclick = () => {
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-fib').classList.add('active');
+            drawingManager.setTool('fib-retracement');
+        };
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+        });
+    </script>
+</body>
+</html>
