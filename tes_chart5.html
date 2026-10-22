@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tes Chart 5 - Fix Gestur & Panning</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
+        #chart-container { width: 100vw; height: 90vh; touch-action: none; }
+        #toolbar { padding: 10px; display: flex; gap: 5px; background: #2B2B43; z-index: 10; position: relative; }
+        .btn { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; }
+        .btn.active { background: #2962FF; }
+    </style>
+    
+    <!-- Library Utama -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button class="btn active">Mode: Geser Bebas</button>
+    </div>
+
+    <div id="chart-container"></div>
+
+    <script>
+        // 1. GENERATE DATA DUMMY (1000 Candle agar bisa digeser jauh)
+        const data = [];
+        let baseTime = 1293840000; // 1 Jan 2011
+        let price = 1400;
+        
+        for (let i = 0; i < 1000; i++) {
+            // Simulasi gap weekend setiap 100 candle
+            if (i % 100 === 0 && i !== 0) {
+                baseTime += 48 * 60 * 60; 
+            } else {
+                baseTime += 5 * 60; 
+            }
+            
+            price = price + (Math.random() - 0.5) * 2;
+            data.push({
+                time: baseTime,
+                open: price,
+                high: price + Math.random(),
+                low: price - Math.random(),
+                close: price + (Math.random() - 0.5)
+            });
+        }
+
+        // 2. INISIALISASI CHART DENGAN PENGATURAN GESTUR BARU
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: { background: { color: '#1e1e1e' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            
+            // PERBAIKAN 1: TIME SCALE (Bebas Geser)
+            timeScale: { 
+                timeVisible: true, 
+                secondsVisible: false, 
+                borderColor: '#485c7b',
+                rightOffset: 10,        // Jarak candle terakhir ke ujung kanan
+                barSpacing: 8,          // Lebar candle awal
+                fixLeftEdge: false,     // Izinkan geser melewati data terlama
+                fixRightEdge: false     // Izinkan geser melewati data terbaru
+            },
+            
+            // PERBAIKAN 2: PRICE SCALE (Skala Y Bebas)
+            rightPriceScale: { 
+                autoScale: false,       // Matikan auto-scale (anti lompat)
+                borderColor: '#485c7b' 
+            },
+
+            // PERBAIKAN 3: SCROLLING (Geser Atas-Bawah & Kiri-Kanan)
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: true   // AKTIFKAN GESER ATAS-BAWAH
+            },
+
+            // PERBAIKAN 4: SCALING (Zoom & Tarik Sumbu)
+            handleScale: {
+                axisPressedMouseMove: {
+                    time: true,       // Tarik sumbu X (waktu)
+                    price: true       // Tarik sumbu Y (harga)
+                },
+                mouseWheel: true,
+                pinch: true           // Zoom via 2 jari
+            }
+        });
+
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+        });
+        
+        candlestickSeries.setData(data);
+        
+        // JANGAN gunakan fitContent() agar chart tidak mengunci di tengah.
+        // Gunakan setVisibleLogicalRange untuk menampilkan 50 candle terakhir di awal.
+        chart.timeScale().setVisibleLogicalRange({
+            from: data.length - 50,
+            to: data.length + 10
+        });
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+        });
+    </script>
+</body>
+</html>
