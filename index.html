@@ -2,73 +2,130 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <!-- Mengunci zoom browser -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>XAUUSD Replay Chart</title>
-    <script src="https://cdn.jsdelivr.net/npm/klinecharts/dist/klinecharts.min.js"></script>
+    <title>Tes Lightweight Charts</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
-        
-        /* touch-action: none mematikan intervensi browser */
-        #chart { width: 100vw; height: 85vh; touch-action: none; }
-        
-        #tf-buttons { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 5px; }
-        .tf-btn { background-color: #2B2B43; color: #d1d4dc; border: 1px solid #363A45; padding: 6px 12px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
-        .tf-btn.active { background-color: #2962FF; color: white; border-color: #2962FF; }
+        #chart-container { width: 100vw; height: 80vh; touch-action: pan-x pan-y; }
+        #toolbar { padding: 10px; display: flex; gap: 5px; background: #2B2B43; z-index: 10; position: relative; }
+        .btn { background: #363A45; color: white; border: none; padding: 8px; border-radius: 4px; font-size: 12px; }
+        .btn.active { background: #2962FF; }
     </style>
+    
+    <!-- 1. Library Utama Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- 2. Plugin Alat Gambar (Drawing Tools) -->
+    <script src="https://unpkg.com/lightweight-charts-drawing@1.0.3/dist/lightweight-charts-drawing.umd.js"></script>
 </head>
 <body>
 
-    <div id="tf-buttons">
-        <button class="tf-btn active" onclick="changeTF('M5', this)">M5</button>
-        <button class="tf-btn" onclick="changeTF('M15', this)">M15</button>
-        <button class="tf-btn" onclick="changeTF('H1', this)">H1</button>
-        <button class="tf-btn" onclick="changeTF('H4', this)">H4</button>
+    <!-- Tombol Alat Gambar -->
+    <div id="toolbar">
+        <button class="btn active" onclick="setTool(null, this)">Pan</button>
+        <button class="btn" onclick="setTool('trend-line', this)">Garis</button>
+        <button class="btn" onclick="setTool('rectangle', this)">Kotak</button>
+        <button class="btn" onclick="setTool('fib-retracement', this)">Fibo</button>
     </div>
 
-    <div id="chart"></div>
-
-    <script src="data_M5_Jan2011.js"></script>
-    <script src="data_M15_Jan2011.js"></script>
-    <script src="data_H1_Jan2011.js"></script>
-    <script src="data_H4_Jan2011.js"></script>
+    <div id="chart-container"></div>
 
     <script>
-        const chart = klinecharts.init('chart');
+        // ==========================================
+        // 1. GENERATE DATA DUMMY (Dengan Gap Weekend)
+        // ==========================================
+        const data = [];
+        let baseTime = 1293840000; // 1 Jan 2011
+        let price = 1400;
         
-        chart.setStyles({
-            xAxis: { gapRule: 1 },
-            grid: { horizontal: { color: '#2B2B43' }, vertical: { color: '#2B2B43' } },
-            candle: {
-                type: 'candle_solid',
-                bar: { upColor: '#26a69a', downColor: '#ef5350', noChangeColor: '#888888' }
+        for (let i = 0; i < 50; i++) {
+            // Buat gap di index ke 25 (simulasi weekend)
+            if (i === 25) {
+                baseTime += 48 * 60 * 60; // Lompat 48 jam
+            } else {
+                baseTime += 5 * 60; // 5 menit
+            }
+            
+            price = price + (Math.random() - 0.5) * 2;
+            data.push({
+                time: baseTime,
+                open: price,
+                high: price + Math.random(),
+                low: price - Math.random(),
+                close: price + (Math.random() - 0.5)
+            });
+        }
+
+        // ==========================================
+        // 2. INISIALISASI CHART
+        // ==========================================
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: { background: { color: '#1e1e1e' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            timeScale: { 
+                timeVisible: true, 
+                secondsVisible: false,
+                borderColor: '#485c7b',
+                rightOffset: 5,
+                barSpacing: 10
+            },
+            // PENGATURAN SKALA BEBAS
+            rightPriceScale: {
+                autoScale: false, // Mematikan auto-scale
+                borderColor: '#485c7b',
+                scaleMargins: { top: 0.1, bottom: 0.1 },
+            },
+            // PENGATURAN INTERAKSI (Kunci Gestur)
+            handleScale: {
+                axisPressedMouseMove: {
+                    time: true,
+                    price: true // Mengizinkan tarik sumbu Y dengan jari
+                },
+                mouseWheel: true,
+                pinch: true // Zoom pakai 2 jari
+            },
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: false // Mematikan geser vertikal di area candle
             }
         });
 
-        // FUNGSI UTAMA: Mematikan auto-scale agar chart tidak lompat-lompat
-        chart.setAutoScale(false); 
-        
-        chart.applyNewData(data_M5_Jan2011);
-        
-        // Zoom in dan kunci posisi Y di awal
-        setTimeout(() => { 
-            chart.scrollToDataIndex(data_M5_Jan2011.length - 20); 
-        }, 100);
+        // Tambah Candlestick
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+        });
+        candlestickSeries.setData(data);
+        chart.timeScale().fitContent();
 
-        function changeTF(tf, btn) {
-            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+        // ==========================================
+        // 3. SETUP ALAT GAMBAR (PLUGIN)
+        // ==========================================
+        let drawingManager = null;
+        
+        // Cek apakah plugin berhasil dimuat
+        if (typeof LightweightChartsDrawing !== 'undefined') {
+            drawingManager = new LightweightChartsDrawing.DrawingManager(chart, candlestickSeries);
+        } else {
+            alert("Plugin gambar gagal dimuat. Cek koneksi internet.");
+        }
+
+        function setTool(toolName, btn) {
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-
-            let newData = [];
-            if (tf === 'M5') newData = data_M5_Jan2011;
-            if (tf === 'M15') newData = data_M15_Jan2011;
-            if (tf === 'H1') newData = data_H1_Jan2011;
-            if (tf === 'H4') newData = data_H4_Jan2011;
-
-            chart.applyNewData(newData);
-            setTimeout(() => { 
-                chart.scrollToDataIndex(newData.length - 20); 
-            }, 100);
+            
+            if (!drawingManager) return;
+            
+            if (toolName === null) {
+                drawingManager.disable(); // Mode Pan
+            } else {
+                drawingManager.setTool(toolName); // Aktifkan alat
+            }
         }
     </script>
 </body>
