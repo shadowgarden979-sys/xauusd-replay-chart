@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tes Chart 8 - TradingView UX</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
+        #chart-wrapper { position: relative; width: 100vw; height: 85vh; }
+        #chart-container { width: 100%; height: 100%; }
+        
+        #overlay-canvas { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            pointer-events: none; /* Canvas tembus pandang, logika diurus JS */
+            z-index: 5;
+        }
+        
+        #toolbar { padding: 10px; display: flex; gap: 5px; background: #2B2B43; z-index: 10; position: relative; overflow-x: auto; }
+        .btn { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .btn.active { background: #2962FF; }
+        .btn-danger { background: #ef5350; margin-left: auto; }
+    </style>
+    
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button class="btn active" id="btn-pan">Kursor (Pan)</button>
+        <button class="btn" id="btn-line">Garis</button>
+        <button class="btn" id="btn-box">Kotak</button>
+        <button class="btn" id="btn-fib">Fibo</button>
+        <button class="btn btn-danger" id="btn-clear">Hapus</button>
+    </div>
+
+    <div id="chart-wrapper">
+        <div id="chart-container"></div>
+        <canvas id="overlay-canvas"></canvas>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SETUP CHART
+        // ==========================================
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: { background: { color: '#1e1e1e' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b', rightOffset: 10, barSpacing: 8 },
+            rightPriceScale: { autoScale: false, borderColor: '#485c7b' },
+            handleScroll: { horzTouchDrag: true, vertTouchDrag: true },
+            handleScale: { axisPressedMouseMove: { time: true, price: true }, pinch: true }
+        });
+
+        const series = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+        });
+
+        // Data Dummy
+        const data = [];
+        let baseTime = 1293840000;
+        let price = 1400;
+        for (let i = 0; i < 1000; i++) {
+            if (i % 100 === 0 && i !== 0) baseTime += 48 * 60 * 60;
+            else baseTime += 5 * 60;
+            price = price + (Math.random() - 0.5) * 2;
+            data.push({ time: baseTime, open: price, high: price + 1, low: price - 1, close: price + (Math.random() - 0.5) });
+        }
+        series.setData(data);
+        chart.timeScale().setVisibleLogicalRange({ from: data.length - 50, to: data.length + 10 });
+
+        // ==========================================
+        // 2. STATE & CANVAS SETUP
+        // ==========================================
+        const canvas = document.getElementById('overlay-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let drawings = []; 
+        let currentTool = 'pan'; // Mode awal: Pan
+        let isDrawing = false;
+        let selectedDrawing = null; 
+        let dragHandle = null; 
+        
+        // Variabel Crosshair
+        let currentMouseX = null;
+        let currentMouseY = null;
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==========================================
+        // 3. RENDER LOOP
+        // ==========================================
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. Gambar semua objek
+            drawings.forEach(d => drawShape(d, d === selectedDrawing));
+            if (isDrawing && selectedDrawing) drawShape(selectedDrawing, true);
+
+            // 2. Gambar Crosshair (Hanya jika sedang menggambar atau edit)
+            if (isDrawing || dragHandle) {
+                drawCrosshair();
+            }
+
+            requestAnimationFrame(render);
+        }
+        render();
+
+        function drawShape(d, isSelected) {
+            const x1 = chart.timeScale().timeToCoordinate(d.start.time);
+            const y1 = series.priceToCoordinate(d.start.price);
+            const x2 = chart.timeScale().timeToCoordinate(d.end.time);
+            const y2 = series.priceToCoordinate(d.end.price);
+
+            if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+            ctx.lineWidth = isSelected ? 3 : 2;
+            ctx.strokeStyle = isSelected ? '#FFD700' : '#2962FF'; 
+
+            if (d.type === 'line') {
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            } else if (d.type === 'box') {
+                ctx.beginPath(); ctx.rect(x1, y1, x2 - x1, y2 - y1); ctx.stroke();
+                ctx.fillStyle = 'rgba(41, 98, 255, 0.1)'; ctx.fill();
+            } else if (d.type === 'fib') {
+                [0, 0.5, 1].forEach(level => {
+                    const yLevel = y1 + (y2 - y1) * level;
+                    ctx.beginPath(); ctx.moveTo(x1, yLevel); ctx.lineTo(x2, yLevel); ctx.stroke();
+                });
+            }
+
+            // Toggle Handles
+            if (isSelected) {
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath(); ctx.arc(x1, y1, 6, 0, Math.PI * 2); ctx.fill(); 
+                ctx.beginPath(); ctx.arc(x2, y2, 6, 0, Math.PI * 2); ctx.fill(); 
+            }
+        }
+
+        function drawCrosshair() {
+            ctx.save();
+            ctx.strokeStyle = '#888888';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]); // Garis putus-putus
+            
+            // Garis Vertikal
+            ctx.beginPath();
+            ctx.moveTo(currentMouseX, 0);
+            ctx.lineTo(currentMouseX, canvas.height);
+            ctx.stroke();
+
+            // Garis Horizontal
+            ctx.beginPath();
+            ctx.moveTo(0, currentMouseY);
+            ctx.lineTo(canvas.width, currentMouseY);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        // ==========================================
+        // 4. UTILITAS HIT-TESTING
+        // ==========================================
+        function getCoords(e) {
+            const rect = container.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function getChartCoords(x, y) {
+            const time = chart.timeScale().coordinateToTime(x);
+            const price = series.coordinateToPrice(y);
+            if (time === null || price === null) return null;
+            return { time, price };
+        }
+
+        function distToSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const lenSq = dx*dx + dy*dy;
+            let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+        }
+
+        function checkHandleHit(x, y) {
+            if (!selectedDrawing) return null;
+            const x1 = chart.timeScale().timeToCoordinate(selectedDrawing.start.time);
+            const y1 = series.priceToCoordinate(selectedDrawing.start.price);
+            const x2 = chart.timeScale().timeToCoordinate(selectedDrawing.end.time);
+            const y2 = series.priceToCoordinate(selectedDrawing.end.price);
+
+            if (Math.hypot(x - x1, y - y1) < 30) return 'start';
+            if (Math.hypot(x - x2, y - y2) < 30) return 'end';
+            return null;
+        }
+
+        function checkObjectHit(x, y) {
+            for (let i = drawings.length - 1; i >= 0; i--) {
+                const d = drawings[i];
+                const x1 = chart.timeScale().timeToCoordinate(d.start.time);
+                const y1 = series.priceToCoordinate(d.start.price);
+                const x2 = chart.timeScale().timeToCoordinate(d.end.time);
+                const y2 = series.priceToCoordinate(d.end.price);
+
+                if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+
+                if (d.type === 'line') {
+                    if (distToSegment(x, y, x1, y1, x2, y2) < 30) return d;
+                } else {
+                    if (Math.abs(x - x1) < 30 && y > Math.min(y1,y2)-30 && y < Math.max(y1,y2)+30) return d;
+                    if (Math.abs(x - x2) < 30 && y > Math.min(y1,y2)-30 && y < Math.max(y1,y2)+30) return d;
+                    if (Math.abs(y - y1) < 30 && x > Math.min(x1,x2)-30 && x < Math.max(x1,x2)+30) return d;
+                    if (Math.abs(y - y2) < 30 && x > Math.min(x1,x2)-30 && x < Math.max(x1,x2)+30) return d;
+                }
+            }
+            return null;
+        }
+
+        // ==========================================
+        // 5. EVENT LISTENERS (Logika TradingView)
+        // ==========================================
+        container.addEventListener('touchstart', handleStart, { passive: false });
+        container.addEventListener('mousedown', handleStart);
+
+        function handleStart(e) {
+            const { x, y } = getCoords(e);
+            currentMouseX = x;
+            currentMouseY = y;
+
+            // --- SKENARIO 1: SEDANG MENGGAMBAR OBJEK BARU ---
+            if (currentTool !== 'pan') {
+                e.preventDefault(); // Kunci chart
+                const coords = getChartCoords(x, y);
+                if (coords) {
+                    isDrawing = true;
+                    selectedDrawing = { type: currentTool, start: coords, end: coords };
+                }
+                return;
+            }
+
+            // --- SKENARIO 2: MODE PAN (Geser / Pilih Objek) ---
+            // Cek 1: Apakah menyentuh Handle (titik kuning) objek yang sedang dipilih?
+            const hitHandle = checkHandleHit(x, y);
+            if (hitHandle) {
+                dragHandle = hitHandle;
+                e.preventDefault(); // Kunci chart agar fokus edit
+                return;
+            }
+
+            // Cek 2: Apakah menyentuh badan objek?
+            const hitObj = checkObjectHit(x, y);
+            if (hitObj) {
+                selectedDrawing = hitObj; // Pilih objek
+                e.preventDefault(); // Kunci chart agar tidak geser saat nge-klik objek
+                return;
+            }
+
+            // Cek 3: Menyentuh ruang kosong
+            selectedDrawing = null; // Hilangkan toggle
+            // JANGAN e.preventDefault(), biarkan chart digeser (Panning)
+        }
+
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('mousemove', handleMove);
+
+        function handleMove(e) {
+            const { x, y } = getCoords(e);
+            currentMouseX = x;
+            currentMouseY = y;
+
+            if (isDrawing && selectedDrawing) {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (coords) selectedDrawing.end = coords;
+            } else if (dragHandle && selectedDrawing) {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (coords) selectedDrawing[dragHandle] = coords;
+            }
+        }
+
+        window.addEventListener('touchend', handleEnd);
+        window.addEventListener('mouseup', handleEnd);
+
+        function handleEnd() {
+            if (isDrawing) {
+                isDrawing = false;
+                drawings.push(selectedDrawing); // Simpan objek
+                
+                // AUTO-UNLOCK: Kembali ke mode Pan setelah selesai menggambar
+                setTool('pan', 'btn-pan'); 
+            }
+            dragHandle = null;
+            currentMouseX = null;
+            currentMouseY = null;
+        }
+
+        // ==========================================
+        // 6. TOMBOL TOOLBAR
+        // ==========================================
+        function setTool(tool, btnId) {
+            currentTool = tool;
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(btnId).classList.add('active');
+            
+            if (tool !== 'pan') {
+                selectedDrawing = null; // Hilangkan seleksi saat ganti alat
+            }
+        }
+
+        document.getElementById('btn-pan').onclick = () => setTool('pan', 'btn-pan');
+        document.getElementById('btn-line').onclick = () => setTool('line', 'btn-line');
+        document.getElementById('btn-box').onclick = () => setTool('box', 'btn-box');
+        document.getElementById('btn-fib').onclick = () => setTool('fib', 'btn-fib');
+        
+        document.getElementById('btn-clear').onclick = () => {
+            drawings = [];
+            selectedDrawing = null;
+        };
+    </script>
+</body>
+</html>
