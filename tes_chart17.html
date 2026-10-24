@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tes Chart 17 - Fix UI & Crosshair</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
+        #chart-wrapper { position: relative; width: 100vw; height: 85vh; background-color: #1e1e1e; }
+        #bg-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        #chart-container { position: relative; width: 100%; height: 100%; z-index: 2; }
+        #fg-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+        
+        #toolbar { padding: 10px; display: flex; align-items: center; background: #2B2B43; z-index: 10; position: relative; }
+        .toolbar-scroll { display: flex; gap: 5px; overflow-x: auto; white-space: nowrap; flex: 1; padding-bottom: 5px; scrollbar-width: none; }
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        
+        .btn { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .btn.active { background: #2962FF; }
+        .btn-long { background: #26a69a; }
+        .btn-short { background: #ef5350; }
+        .btn-danger { background: #ef5350; margin-left: 10px; }
+
+        /* Floating Menu */
+        #floating-menu {
+            position: absolute; display: none; background: #2B2B43; border: 1px solid #485c7b;
+            border-radius: 6px; padding: 5px; gap: 5px; z-index: 20; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            pointer-events: auto; flex-direction: row;
+        }
+        .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .f-btn:hover { background: #485c7b; }
+        .f-btn.snap-active { background: #26a69a; }
+
+        /* Modal */
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+            z-index: 100; display: none; justify-content: center; align-items: center;
+        }
+        #modal-content {
+            background: #2B2B43; padding: 20px; border-radius: 8px; width: 80%; max-width: 300px;
+            color: white; display: flex; flex-direction: column; gap: 10px;
+        }
+        #modal-content input[type="color"] { width: 100%; height: 40px; border: none; cursor: pointer; }
+        #modal-content input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
+        .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+    </style>
+    
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="data_M5_Jan2011.js"></script>
+</head>
+<body>
+
+    <div id="toolbar">
+        <div class="toolbar-scroll" id="toolbar-scroll">
+            <button class="btn" id="btn-line">Garis</button>
+            <button class="btn" id="btn-box">Kotak</button>
+            <button class="btn" id="btn-fibo">Fibo</button>
+            <button class="btn" id="btn-circle">Lingkaran</button>
+            <button class="btn" id="btn-text">Teks</button>
+            <button class="btn" id="btn-arrow">Panah</button>
+            <button class="btn" id="btn-measure">Ukur</button>
+            <button class="btn btn-long" id="btn-long">Long</button>
+            <button class="btn btn-short" id="btn-short">Short</button>
+        </div>
+        <button class="btn btn-danger" id="btn-clear">Hapus</button>
+    </div>
+
+    <div id="chart-wrapper">
+        <!-- Floating menu dipindah ke dalam wrapper agar posisinya relatif ke chart -->
+        <div id="floating-menu">
+            <button class="f-btn" id="f-btn-snap" style="display:none;">Snap</button>
+            <button class="f-btn" id="f-btn-costum">Kostum</button>
+            <button class="f-btn" id="f-btn-delete" style="background:#ef5350;">Hapus</button>
+        </div>
+
+        <canvas id="bg-canvas"></canvas>
+        <div id="chart-container"></div>
+        <canvas id="fg-canvas"></canvas>
+    </div>
+
+    <!-- Modal Panel -->
+    <div id="modal-overlay">
+        <div id="modal-content">
+            <h3 style="margin:0;">Kostumisasi</h3>
+            <label>Warna:</label>
+            <input type="color" id="input-color" value="#2962FF">
+            <div id="text-input-container" style="display:none;">
+                <label>Teks:</label>
+                <input type="text" id="input-text">
+            </div>
+            <div class="modal-btns">
+                <button class="btn" id="btn-close-modal">Batal</button>
+                <button class="btn" id="btn-save-modal" style="background:#26a69a;">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. SETUP CHART & DATA
+        // ==========================================
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth, height: container.clientHeight,
+            layout: { background: { color: 'transparent' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+            timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b', rightOffset: 10, barSpacing: 8 },
+            rightPriceScale: { autoScale: false, borderColor: '#485c7b' },
+            handleScroll: { horzTouchDrag: true, vertTouchDrag: true },
+            handleScale: { axisPressedMouseMove: { time: true, price: true }, pinch: true },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Hidden }
+        });
+
+        const series = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+        });
+
+        const rawData = typeof data_M5_Jan2011 !== 'undefined' ? data_M5_Jan2011 : [];
+        let data = rawData.map(item => ({
+            time: Math.floor(item.timestamp / 1000), 
+            open: item.open, high: item.high, low: item.low, close: item.close
+        }));
+        series.setData(data);
+        chart.timeScale().setVisibleLogicalRange({ from: data.length - 50, to: data.length + 10 });
+
+        // ==========================================
+        // 2. STATE & CANVAS SETUP
+        // ==========================================
+        const bgCanvas = document.getElementById('bg-canvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const fgCanvas = document.getElementById('fg-canvas');
+        const fgCtx = fgCanvas.getContext('2d');
+        
+        let drawings = JSON.parse(localStorage.getItem('xau_drawings_v17')) || []; 
+        
+        let currentTool = 'pan';
+        let isDrawing = false;
+        let selectedDrawing = null; 
+        let dragHandle = null; 
+        
+        let dragStartLogical = null;
+        let dragStartPrice = null;
+        let initialObjState = null;
+
+        let currentMouseX = null;
+        let currentMouseY = null;
+
+        let isMeasuring = false;
+        let measureStart = null;
+        let measureEnd = null;
+        let measureFrozen = false;
+
+        let snapEnabled = false;
+
+        function resizeCanvas() {
+            bgCanvas.width = fgCanvas.width = container.clientWidth;
+            bgCanvas.height = fgCanvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==========================================
+        // 3. RENDER LOOP
+        // ==========================================
+        function render() {
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+            fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
+            
+            drawings.forEach(d => {
+                if (d.type.startsWith('position')) drawPositionBg(d);
+                else drawShapeFg(d, d === selectedDrawing);
+                
+                if (d === selectedDrawing) {
+                    drawHandlesFg(d);
+                    drawLabelsFg(d);
+                }
+            });
+
+            if (isDrawing && selectedDrawing) {
+                if (selectedDrawing.type.startsWith('position')) drawPositionBg(selectedDrawing);
+                else drawShapeFg(selectedDrawing, true);
+                drawHandlesFg(selectedDrawing);
+                drawLabelsFg(selectedDrawing);
+            }
+
+            if (measureStart && measureEnd) {
+                drawMeasureTool();
+            }
+
+            if (currentMouseX !== null && currentMouseY !== null && !measureFrozen) {
+                drawCrosshair();
+            }
+
+            updateFloatingMenuPosition();
+            requestAnimationFrame(render);
+        }
+        render();
+
+        // ==========================================
+        // 4. FUNGSI GAMBAR
+        // ==========================================
+        function getX(logical) { return chart.timeScale().logicalToCoordinate(logical); }
+        function getY(price) { return series.priceToCoordinate(price); }
+
+        function drawMeasureTool() {
+            const x1 = getX(measureStart.logical); const y1 = getY(measureStart.price);
+            const x2 = getX(measureEnd.logical); const y2 = getY(measureEnd.price);
+            if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+            fgCtx.fillStyle = 'rgba(41, 98, 255, 0.2)';
+            fgCtx.strokeStyle = '#2962FF';
+            fgCtx.lineWidth = 1;
+            fgCtx.beginPath(); fgCtx.rect(x1, y1, x2 - x1, y2 - y1); fgCtx.fill(); fgCtx.stroke();
+
+            const pipDiff = Math.abs(measureEnd.price - measureStart.price) * 10;
+            const barDiff = Math.abs(Math.round(measureEnd.logical - measureStart.logical));
+            const timeDiffMinutes = barDiff * 5; 
+            const hours = Math.floor(timeDiffMinutes / 60);
+            const mins = timeDiffMinutes % 60;
+            const timeStr = (hours > 0 ? hours + 'h ' : '') + mins + 'm';
+
+            const text = `${pipDiff.toFixed(1)} Pips | ${barDiff} Bars | ${timeStr}`;
+            
+            fgCtx.font = '12px sans-serif';
+            const textWidth = fgCtx.measureText(text).width;
+            const boxX = (x1 + x2) / 2 - textWidth / 2 - 5;
+            const boxY = (y1 + y2) / 2 - 10;
+
+            fgCtx.fillStyle = '#2B2B43';
+            fgCtx.fillRect(boxX, boxY, textWidth + 10, 20);
+            fgCtx.fillStyle = '#ffffff';
+            fgCtx.textAlign = 'center';
+            fgCtx.textBaseline = 'middle';
+            fgCtx.fillText(text, boxX + (textWidth + 10) / 2, boxY + 10);
+        }
+
+        function drawPositionBg(d) {
+            const x1 = getX(d.start.logical); const x2 = getX(d.end.logical);
+            const yEntry = getY(d.start.price); const yTP = getY(d.tp); const ySL = getY(d.sl);
+            if (x1 === null || x2 === null || yEntry === null || yTP === null || ySL === null) return;
+
+            bgCtx.fillStyle = 'rgba(38, 166, 154, 0.2)'; bgCtx.beginPath(); bgCtx.rect(x1, yTP, x2 - x1, yEntry - yTP); bgCtx.fill();
+            bgCtx.fillStyle = 'rgba(239, 83, 80, 0.2)'; bgCtx.beginPath(); bgCtx.rect(x1, yEntry, x2 - x1, ySL - yEntry); bgCtx.fill();
+            
+            bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+            bgCtx.beginPath(); bgCtx.moveTo(x1, yEntry); bgCtx.lineTo(x2, yEntry); bgCtx.stroke();
+
+            const tradeInfo = calculateTradeLine(d);
+            if (tradeInfo) {
+                const xStart = getX(tradeInfo.startLogical); const xEnd = getX(tradeInfo.endLogical); const yEnd = getY(tradeInfo.endPrice);
+                bgCtx.beginPath(); bgCtx.moveTo(xStart, yEntry); bgCtx.lineTo(xEnd, yEnd); bgCtx.stroke();
+            }
+            bgCtx.setLineDash([]);
+        }
+
+        function drawShapeFg(d, isSelected) {
+            const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+            const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+            if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+            fgCtx.lineWidth = isSelected ? 3 : 2;
+            fgCtx.strokeStyle = isSelected ? '#FFD700' : (d.color || '#2962FF'); 
+
+            if (d.type === 'line') {
+                fgCtx.beginPath(); fgCtx.moveTo(x1, y1); fgCtx.lineTo(x2, y2); fgCtx.stroke();
+            } else if (d.type === 'box') {
+                fgCtx.beginPath(); fgCtx.rect(x1, y1, x2 - x1, y2 - y1); fgCtx.stroke();
+                fgCtx.fillStyle = d.color ? d.color + '20' : 'rgba(41, 98, 255, 0.1)'; fgCtx.fill();
+                if (d.text) {
+                    fgCtx.font = '12px sans-serif'; fgCtx.fillStyle = '#ffffff'; fgCtx.textAlign = 'center';
+                    fgCtx.fillText(d.text, (x1 + x2) / 2, (y1 + y2) / 2);
+                }
+            } else if (d.type === 'circle') {
+                const radius = Math.hypot(x2 - x1, y2 - y1);
+                fgCtx.beginPath(); fgCtx.arc(x1, y1, radius, 0, 2 * Math.PI); fgCtx.stroke();
+                fgCtx.fillStyle = d.color ? d.color + '20' : 'rgba(41, 98, 255, 0.1)'; fgCtx.fill();
+            } else if (d.type === 'arrow') {
+                fgCtx.beginPath(); fgCtx.moveTo(x1, y1); fgCtx.lineTo(x2, y2); fgCtx.stroke();
+                const angle = Math.atan2(y2 - y1, x2 - x1); const headLen = 15;
+                fgCtx.beginPath(); fgCtx.moveTo(x2, y2);
+                fgCtx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+                fgCtx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+                fgCtx.closePath(); fgCtx.fillStyle = isSelected ? '#FFD700' : (d.color || '#2962FF'); fgCtx.fill();
+            } else if (d.type === 'text') {
+                fgCtx.font = '14px sans-serif'; fgCtx.fillStyle = isSelected ? '#FFD700' : (d.color || '#d1d4dc');
+                fgCtx.fillText(d.text || "Teks", x1, y1);
+            } else if (d.type === 'fibo') {
+                const levels = [0, 0.236, 0.382, 0.5, 0.618, 1];
+                fgCtx.font = '10px sans-serif'; fgCtx.fillStyle = isSelected ? '#FFD700' : (d.color || '#d1d4dc');
+                levels.forEach(lvl => {
+                    const yLvl = y1 + (y2 - y1) * lvl;
+                    fgCtx.beginPath(); fgCtx.moveTo(x1, yLvl); fgCtx.lineTo(x2, yLvl); fgCtx.stroke();
+                    fgCtx.fillText(lvl.toFixed(3), x2 + 15, yLvl + 3);
+                });
+            }
+        }
+
+        function drawHandlesFg(d) {
+            fgCtx.fillStyle = '#FFD700';
+            if (d.type.startsWith('position')) {
+                let x1 = getX(d.start.logical); let yEntry = getY(d.start.price);
+                let x2 = getX(d.end.logical); let yTP = getY(d.tp); let ySL = getY(d.sl);
+                fgCtx.beginPath(); fgCtx.arc(x1, yEntry, 6, 0, Math.PI * 2); fgCtx.fill();
+                fgCtx.beginPath(); fgCtx.arc(x2, yTP, 6, 0, Math.PI * 2); fgCtx.fill();
+                fgCtx.beginPath(); fgCtx.arc(x2, ySL, 6, 0, Math.PI * 2); fgCtx.fill();
+                fgCtx.beginPath(); fgCtx.arc(x2, yEntry, 6, 0, Math.PI * 2); fgCtx.fill();
+                let cx = (x1 + x2) / 2; let cy = (yEntry + yTP + ySL) / 3;
+                fgCtx.fillRect(cx - 5, cy - 5, 10, 10);
+            } else if (d.type === 'circle') {
+                const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+                const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                fgCtx.fillRect(x1 - 5, y1 - 5, 10, 10);
+                fgCtx.beginPath(); fgCtx.arc(x2, y2, 6, 0, Math.PI * 2); fgCtx.fill();
+            } else {
+                const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+                const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                fgCtx.beginPath(); fgCtx.arc(x1, y1, 6, 0, Math.PI * 2); fgCtx.fill(); 
+                fgCtx.beginPath(); fgCtx.arc(x2, y2, 6, 0, Math.PI * 2); fgCtx.fill(); 
+                let cx = (x1 + x2) / 2; let cy = (y1 + y2) / 2;
+                fgCtx.fillRect(cx - 5, cy - 5, 10, 10);
+            }
+        }
+
+        function drawLabelsFg(d) {
+            if (d.type.startsWith('position')) {
+                fgCtx.font = '11px sans-serif'; fgCtx.fillStyle = '#ffffff'; fgCtx.textAlign = 'left'; fgCtx.textBaseline = 'middle';
+                let x2 = getX(d.end.logical); let yTP = getY(d.tp); let ySL = getY(d.sl); let yEntry = getY(d.start.price);
+                if (yTP !== null) fgCtx.fillText(d.tp.toFixed(2), x2 + 12, yTP);
+                if (ySL !== null) fgCtx.fillText(d.sl.toFixed(2), x2 + 12, ySL);
+                if (yEntry !== null) fgCtx.fillText(d.start.price.toFixed(2), x2 + 12, yEntry);
+            }
+        }
+
+        // CROSSHAIR DENGAN LABEL HARGA & WAKTU
+        function drawCrosshair() {
+            fgCtx.save();
+            fgCtx.strokeStyle = '#888888'; fgCtx.lineWidth = 1; fgCtx.setLineDash([5, 5]); 
+            fgCtx.beginPath(); fgCtx.moveTo(currentMouseX, 0); fgCtx.lineTo(currentMouseX, fgCanvas.height); fgCtx.stroke();
+            fgCtx.beginPath(); fgCtx.moveTo(0, currentMouseY); fgCtx.lineTo(fgCanvas.width, currentMouseY); fgCtx.stroke();
+            fgCtx.restore();
+
+            let price = series.coordinateToPrice(currentMouseY);
+            let time = chart.timeScale().coordinateToTime(currentMouseX);
+            
+            if (price !== null && time !== null) {
+                fgCtx.fillStyle = '#363A45'; fgCtx.fillRect(fgCanvas.width - 65, currentMouseY - 10, 65, 20);
+                fgCtx.fillStyle = '#d1d4dc'; fgCtx.font = '12px sans-serif'; fgCtx.textAlign = 'center';
+                fgCtx.fillText(price.toFixed(2), fgCanvas.width - 32, currentMouseY + 4);
+
+                let date = new Date(time * 1000);
+                let timeStr = date.getUTCHours().toString().padStart(2, '0') + ':' + date.getUTCMinutes().toString().padStart(2, '0');
+                fgCtx.fillStyle = '#363A45'; fgCtx.fillRect(currentMouseX - 25, fgCanvas.height - 25, 50, 20);
+                fgCtx.fillStyle = '#d1d4dc'; fgCtx.fillText(timeStr, currentMouseX, fgCanvas.height - 10);
+            }
+        }
+
+        // ==========================================
+        // 5. LOGIKA TRADE & UTILITAS
+        // ==========================================
+        function calculateTradeLine(d) {
+            let entryLogical = Math.round(d.start.logical);
+            let entryPrice = d.start.price;
+            let isLong = d.type === 'position-long';
+            let hitEntryIndex = null;
+            for (let i = Math.max(0, entryLogical); i < data.length; i++) {
+                let c = data[i];
+                if (c.low <= entryPrice && c.high >= entryPrice) { hitEntryIndex = i; break; }
+            }
+            if (hitEntryIndex === null) return null; 
+            let exitIndex = null, exitPrice = null;
+            for (let i = hitEntryIndex; i < data.length; i++) {
+                let c = data[i];
+                if (isLong) {
+                    if (c.high >= d.tp) { exitIndex = i; exitPrice = d.tp; break; }
+                    if (c.low <= d.sl) { exitIndex = i; exitPrice = d.sl; break; }
+                } else {
+                    if (c.low <= d.tp) { exitIndex = i; exitPrice = d.tp; break; }
+                    if (c.high >= d.sl) { exitIndex = i; exitPrice = d.sl; break; }
+                }
+            }
+            if (exitIndex === null) return null; 
+            return { startLogical: hitEntryIndex, endLogical: exitIndex, endPrice: exitPrice };
+        }
+
+        function saveToLocalStorage() { localStorage.setItem('xau_drawings_v17', JSON.stringify(drawings)); }
+
+        function getCoords(e) {
+            const rect = container.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function getChartCoords(x, y) {
+            const logical = chart.timeScale().coordinateToLogical(x);
+            const price = series.coordinateToPrice(y);
+            if (logical === null || price === null) return null;
+            return { logical, price };
+        }
+
+        function checkHandleHit(x, y) {
+            if (!selectedDrawing) return null;
+            const d = selectedDrawing;
+            if (d.type === 'circle') {
+                const cx = getX(d.start.logical); const cy = getY(d.start.price);
+                const ex = getX(d.end.logical); const ey = getY(d.end.price);
+                if (Math.hypot(x - cx, y - cy) < 30) return 'center';
+                if (Math.hypot(x - ex, y - ey) < 30) return 'end';
+                return null;
+            }
+            let cx, cy;
+            if (d.type.startsWith('position')) {
+                let x1 = getX(d.start.logical); let yEntry = getY(d.start.price);
+                let x2 = getX(d.end.logical); let yTP = getY(d.tp); let ySL = getY(d.sl);
+                cx = (x1 + x2) / 2; cy = (yEntry + yTP + ySL) / 3;
+            } else {
+                const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+                const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                cx = (x1 + x2) / 2; cy = (y1 + y2) / 2;
+            }
+            if (Math.hypot(x - cx, y - cy) < 30) return 'center';
+
+            if (d.type.startsWith('position')) {
+                const x1 = getX(d.start.logical); const yEntry = getY(d.start.price);
+                const x2 = getX(d.end.logical); const yTP = getY(d.tp); const ySL = getY(d.sl);
+                if (Math.hypot(x - x1, y - yEntry) < 30) return 'entry';
+                if (Math.hypot(x - x2, y - yTP) < 30) return 'tp';
+                if (Math.hypot(x - x2, y - ySL) < 30) return 'sl';
+                if (Math.hypot(x - x2, y - yEntry) < 30) return 'exit';
+            } else {
+                const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+                const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                if (Math.hypot(x - x1, y - y1) < 30) return 'start';
+                if (Math.hypot(x - x2, y - y2) < 30) return 'end';
+            }
+            return null;
+        }
+
+        function checkObjectHit(x, y) {
+            for (let i = drawings.length - 1; i >= 0; i--) {
+                const d = drawings[i];
+                const x1 = getX(d.start.logical); const y1 = getY(d.start.price);
+                if (d.type.startsWith('position')) {
+                    let x2 = getX(d.end.logical); const yTP = getY(d.tp); const ySL = getY(d.sl);
+                    const minX = Math.min(x1, x2); const maxX = Math.max(x1, x2);
+                    const minY = Math.min(yTP, ySL, y1); const maxY = Math.max(yTP, ySL, y1);
+                    if (x > minX && x < maxX && y > minY && y < maxY) return d;
+                } else if (d.type === 'circle') {
+                    const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                    if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+                    if (Math.hypot(x - x1, y - y1) <= Math.hypot(x2 - x1, y2 - y1) + 10) return d;
+                } else {
+                    const x2 = getX(d.end.logical); const y2 = getY(d.end.price);
+                    if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+                    if (d.type === 'box') {
+                        const minX = Math.min(x1, x2); const maxX = Math.max(x1, x2);
+                        const minY = Math.min(y1, y2); const maxY = Math.max(y1, y2);
+                        if (x > minX && x < maxX && y > minY && y < maxY) return d;
+                    } else if (d.type === 'line' || d.type === 'arrow' || d.type === 'fibo') {
+                        if (Math.abs((y2 - y1)*x - (x2 - x1)*y + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < 20) return d;
+                    } else if (d.type === 'text') {
+                        if (Math.hypot(x - x1, y - y1) < 30) return d;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // ==========================================
+        // 6. FLOATING MENU & MODAL LOGIC
+        // ==========================================
+        const floatingMenu = document.getElementById('floating-menu');
+        const btnSnap = document.getElementById('f-btn-snap');
+        const btnCostum = document.getElementById('f-btn-costum');
+        const btnDelete = document.getElementById('f-btn-delete');
+        
+        const modalOverlay = document.getElementById('modal-overlay');
+        const inputColor = document.getElementById('input-color');
+        const textInputContainer = document.getElementById('text-input-container');
+        const inputText = document.getElementById('input-text');
+
+        function updateFloatingMenuPosition() {
+            if (!selectedDrawing) {
+                floatingMenu.style.display = 'none';
+                return;
+            }
+
+            let maxY = -Infinity, minX = Infinity, maxX = -Infinity, minY = Infinity;
+            
+            if (selectedDrawing.type.startsWith('position')) {
+                minX = getX(selectedDrawing.start.logical);
+                maxX = getX(selectedDrawing.end.logical);
+                let yTP = getY(selectedDrawing.tp); let ySL = getY(selectedDrawing.sl); let yEntry = getY(selectedDrawing.start.price);
+                maxY = Math.max(yTP, ySL, yEntry);
+                minY = Math.min(yTP, ySL, yEntry);
+            } else if (selectedDrawing.type === 'circle') {
+                let cx = getX(selectedDrawing.start.logical); let cy = getY(selectedDrawing.start.price);
+                let ex = getX(selectedDrawing.end.logical); let ey = getY(selectedDrawing.end.price);
+                let rad = Math.hypot(ex - cx, ey - cy);
+                minX = cx - rad; maxX = cx + rad; maxY = cy + rad; minY = cy - rad;
+            } else {
+                minX = Math.min(getX(selectedDrawing.start.logical), getX(selectedDrawing.end.logical));
+                maxX = Math.max(getX(selectedDrawing.start.logical), getX(selectedDrawing.end.logical));
+                minY = Math.min(getY(selectedDrawing.start.price), getY(selectedDrawing.end.price));
+                maxY = Math.max(getY(selectedDrawing.start.price), getY(selectedDrawing.end.price));
+            }
+
+            // Posisi default: Kanan Atas objek
+            let menuX = maxX + 10; 
+            let menuY = minY - 40; 
+
+            // Collision Detection (Batas Chart Wrapper)
+            if (menuY < 10) menuY = maxY + 10; // Jika mepet atas, pindah ke bawah
+            if (menuX + 150 > fgCanvas.width) menuX = minX - 150; // Jika mepet kanan, pindah ke kiri
+
+            floatingMenu.style.display = 'flex';
+            floatingMenu.style.left = menuX + 'px';
+            floatingMenu.style.top = menuY + 'px';
+
+            if (selectedDrawing.type === 'line') {
+                btnSnap.style.display = 'block';
+                btnSnap.className = 'f-btn' + (snapEnabled ? ' snap-active' : '');
+            } else {
+                btnSnap.style.display = 'none';
+            }
+        }
+
+        btnDelete.onclick = () => {
+            if (selectedDrawing) {
+                drawings = drawings.filter(d => d !== selectedDrawing);
+                selectedDrawing = null;
+                saveToLocalStorage();
+            }
+        };
+
+        btnSnap.onclick = () => { snapEnabled = !snapEnabled; };
+
+        btnCostum.onclick = () => {
+            if (!selectedDrawing) return;
+            inputColor.value = selectedDrawing.color || '#2962FF';
+            
+            if (selectedDrawing.type === 'box') {
+                textInputContainer.style.display = 'block';
+                inputText.value = selectedDrawing.text || '';
+            } else {
+                textInputContainer.style.display = 'none';
+            }
+            modalOverlay.style.display = 'flex';
+        };
+
+        document.getElementById('btn-close-modal').onclick = () => { modalOverlay.style.display = 'none'; };
+        
+        document.getElementById('btn-save-modal').onclick = () => {
+            if (selectedDrawing) {
+                selectedDrawing.color = inputColor.value;
+                if (selectedDrawing.type === 'box') selectedDrawing.text = inputText.value;
+                saveToLocalStorage();
+            }
+            modalOverlay.style.display = 'none';
+        };
+
+        // ==========================================
+        // 7. EVENT LISTENERS
+        // ==========================================
+        container.addEventListener('touchstart', handleStart, { passive: false });
+        container.addEventListener('mousedown', handleStart);
+
+        function handleStart(e) {
+            const { x, y } = getCoords(e);
+            currentMouseX = x; currentMouseY = y;
+
+            if (currentTool === 'measure') {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (coords) {
+                    if (measureFrozen) {
+                        measureFrozen = false; measureStart = null; measureEnd = null; setTool('pan');
+                    } else {
+                        isMeasuring = true; measureStart = coords; measureEnd = coords;
+                    }
+                }
+                return;
+            }
+
+            if (currentTool !== 'pan') {
+                e.preventDefault(); 
+                const coords = getChartCoords(x, y);
+                if (coords) {
+                    if (currentTool === 'position-long' || currentTool === 'position-short') {
+                        let isLong = currentTool === 'position-long';
+                        let tp = isLong ? coords.price + 5 : coords.price - 5;
+                        let sl = isLong ? coords.price - 5 : coords.price + 5;
+                        let endLogical = coords.logical + 20; 
+                        let newPos = { type: currentTool, start: coords, end: { logical: endLogical, price: coords.price }, tp, sl };
+                        drawings.push(newPos); selectedDrawing = newPos;
+                        setTool('pan'); saveToLocalStorage();
+                    } else if (currentTool === 'circle') {
+                        let newCircle = { type: 'circle', start: coords, end: { logical: coords.logical + 10, price: coords.price + 5 } };
+                        drawings.push(newCircle); selectedDrawing = newCircle;
+                        setTool('pan'); saveToLocalStorage();
+                    } else if (currentTool === 'text') {
+                        let text = prompt("Masukkan teks:");
+                        if (text) {
+                            let newText = { type: 'text', start: coords, end: coords, text: text };
+                            drawings.push(newText); saveToLocalStorage();
+                        }
+                        setTool('pan');
+                    } else {
+                        isDrawing = true;
+                        selectedDrawing = { type: currentTool, start: coords, end: coords };
+                    }
+                }
+                return;
+            }
+
+            if (measureFrozen) {
+                measureFrozen = false; measureStart = null; measureEnd = null; return;
+            }
+
+            const hitHandle = checkHandleHit(x, y);
+            if (hitHandle) {
+                dragHandle = hitHandle;
+                e.preventDefault(); 
+                chart.applyOptions({ handleScroll: false, handleScale: false }); 
+                const coords = getChartCoords(x, y);
+                dragStartLogical = coords.logical; dragStartPrice = coords.price;
+                initialObjState = JSON.parse(JSON.stringify(selectedDrawing));
+                return;
+            }
+
+            const hitObj = checkObjectHit(x, y);
+            if (hitObj) {
+                selectedDrawing = hitObj; e.preventDefault(); return;
+            }
+            selectedDrawing = null; 
+        }
+
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('mousemove', handleMove);
+
+        function handleMove(e) {
+            const { x, y } = getCoords(e);
+            currentMouseX = x; currentMouseY = y;
+
+            if (isMeasuring) {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (coords) measureEnd = coords;
+            } else if (isDrawing && selectedDrawing) {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (coords) selectedDrawing.end = coords;
+            } else if (dragHandle && selectedDrawing) {
+                e.preventDefault();
+                const coords = getChartCoords(x, y);
+                if (!coords) return;
+
+                if (dragHandle === 'center') {
+                    const deltaLogical = coords.logical - dragStartLogical;
+                    const deltaPrice = coords.price - dragStartPrice;
+                    if (selectedDrawing.type.startsWith('position')) {
+                        selectedDrawing.start.logical = initialObjState.start.logical + deltaLogical;
+                        selectedDrawing.start.price = initialObjState.start.price + deltaPrice;
+                        selectedDrawing.end.logical = initialObjState.end.logical + deltaLogical;
+                        selectedDrawing.tp = initialObjState.tp + deltaPrice;
+                        selectedDrawing.sl = initialObjState.sl + deltaPrice;
+                    } else {
+                        selectedDrawing.start.logical = initialObjState.start.logical + deltaLogical;
+                        selectedDrawing.start.price = initialObjState.start.price + deltaPrice;
+                        selectedDrawing.end.logical = initialObjState.end.logical + deltaLogical;
+                        selectedDrawing.end.price = initialObjState.end.price + deltaPrice;
+                    }
+                } else {
+                    if (dragHandle === 'tp') {
+                        if (selectedDrawing.type === 'position-long' && coords.price > selectedDrawing.start.price) selectedDrawing.tp = coords.price;
+                        if (selectedDrawing.type === 'position-short' && coords.price < selectedDrawing.start.price) selectedDrawing.tp = coords.price;
+                    } else if (dragHandle === 'sl') {
+                        if (selectedDrawing.type === 'position-long' && coords.price < selectedDrawing.start.price) selectedDrawing.sl = coords.price;
+                        if (selectedDrawing.type === 'position-short' && coords.price > selectedDrawing.start.price) selectedDrawing.sl = coords.price;
+                    } else if (dragHandle === 'exit') {
+                        selectedDrawing.end.logical = coords.logical;
+                    } else if (dragHandle === 'entry') {
+                        selectedDrawing.start.logical = coords.logical;
+                        selectedDrawing.start.price = coords.price;
+                    } else {
+                        if (selectedDrawing.type === 'line' && snapEnabled) {
+                            const startX = getX(selectedDrawing.start.logical); const startY = getY(selectedDrawing.start.price);
+                            if (Math.abs(x - startX) < 15) coords.logical = selectedDrawing.start.logical; 
+                            if (Math.abs(y - startY) < 15) coords.price = selectedDrawing.start.price; 
+                        }
+                        selectedDrawing[dragHandle] = coords;
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('touchend', handleEnd);
+        window.addEventListener('mouseup', handleEnd);
+
+        function handleEnd() {
+            if (isMeasuring) { isMeasuring = false; measureFrozen = true; }
+
+            if (isDrawing) {
+                isDrawing = false;
+                drawings.push(selectedDrawing); 
+                setTool('pan'); saveToLocalStorage(); 
+            }
+            
+            if (dragHandle) {
+                dragHandle = null;
+                chart.applyOptions({ handleScroll: true, handleScale: true }); 
+                saveToLocalStorage(); 
+            }
+            
+            currentMouseX = null; currentMouseY = null;
+        }
+
+        // ==========================================
+        // 8. TOMBOL TOOLBAR
+        // ==========================================
+        function setTool(tool, btnId = null) {
+            currentTool = tool;
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            if (btnId) document.getElementById(btnId).classList.add('active');
+            
+            if (tool !== 'pan') selectedDrawing = null; 
+        }
+
+        document.getElementById('btn-line').onclick = () => setTool('line', 'btn-line');
+        document.getElementById('btn-box').onclick = () => setTool('box', 'btn-box');
+        document.getElementById('btn-fibo').onclick = () => setTool('fibo', 'btn-fibo');
+        document.getElementById('btn-circle').onclick = () => setTool('circle', 'btn-circle');
+        document.getElementById('btn-text').onclick = () => setTool('text', 'btn-text');
+        document.getElementById('btn-arrow').onclick = () => setTool('arrow', 'btn-arrow');
+        document.getElementById('btn-measure').onclick = () => setTool('measure', 'btn-measure');
+        document.getElementById('btn-long').onclick = () => setTool('position-long', 'btn-long');
+        document.getElementById('btn-short').onclick = () => setTool('position-short', 'btn-short');
+        
+        document.getElementById('btn-clear').onclick = () => {
+            if(confirm("Hapus semua objek?")) {
+                drawings = []; selectedDrawing = null; saveToLocalStorage();
+            }
+        };
+    </script>
+</body>
+</html>
