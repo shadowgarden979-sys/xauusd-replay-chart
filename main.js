@@ -24,6 +24,8 @@ try {
 } catch(e) { console.log("LocalStorage defaults reset."); }
 
 // --- Render Loop Utama ---
+let renderErrorShown = false; // Mencegah loop error membanjiri layar
+
 function render() {
     try {
         bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
@@ -59,14 +61,20 @@ function render() {
         updateFloatingMenuPosition();
         updateScissorsPosition();
         updateDateHUD();
-    } catch (error) } catch (error) {
-    // Menampilkan error ke layar
-    document.body.innerHTML += `<div style="position:fixed;top:50px;left:10px;right:10px;background:red;color:white;z-index:9999;padding:15px;font-size:12px;word-wrap:break-word;">
-        <b>ERROR DI RENDER:</b><br>${error.message}<br><br>
-        <b>Stack:</b><br>${error.stack}
-    </div>`;
-    console.error("Render Error:", error);
-} }
+
+    } catch (error) {
+        // Menampilkan error ke layar HANYA SEKALI
+        if (!renderErrorShown) {
+            renderErrorShown = true;
+            document.body.innerHTML += `<div style="position:fixed;top:50px;left:10px;right:10px;background:red;color:white;z-index:9999;padding:15px;font-size:12px;word-wrap:break-word;">
+                <b>ERROR DI RENDER:</b><br>${error.message}<br><br>
+                <b>Stack:</b><br>${error.stack}
+            </div>`;
+        }
+        console.error("Render Error:", error);
+    }
+    
+    // Selalu panggil requestAnimationFrame di luar try-catch agar loop terus berjalan
     requestAnimationFrame(render);
 }
 
