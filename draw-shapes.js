@@ -3,6 +3,10 @@
 // Deskripsi: Semua fungsi menggambar di Canvas
 // ==========================================
 
+// --- OPTIMASI: Cache untuk warning market ---
+let warningCache = [];
+let lastWarningRange = "";
+
 function formatFullTime(timestamp) {
     let d = new Date(timestamp * 1000);
     let days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -26,36 +30,50 @@ function updateDateHUD() {
 
 function drawWarnings() {
     let limit = isReplayMode ? currentReplayIndex - 1 : fullData.length - 1;
-    if (limit < 0) return;
+    if (limit < 0 || !chart) return;
 
-    for (let i = 0; i <= limit; i++) {
-        let c = fullData[i];
-        let d = new Date(c.time * 1000);
-        let day = d.getUTCDay(); 
-        let hours = d.getUTCHours();
-        let mins = d.getUTCMinutes();
+    // Optimasi: Cek apakah range chart berubah. Jika tidak, gambar dari cache.
+    let range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    
+    let rangeStr = `${Math.round(range.from)}_${Math.round(range.to)}_${limit}`;
+    
+    if (rangeStr !== lastWarningRange) {
+        lastWarningRange = rangeStr;
+        warningCache = [];
+        
+        for (let i = 0; i <= limit; i++) {
+            let c = fullData[i];
+            let d = new Date(c.time * 1000);
+            let day = d.getUTCDay(); 
+            let hours = d.getUTCHours();
+            let mins = d.getUTCMinutes();
 
-        let x = getX(c.time);
-        if (x === null) continue;
-
-        if (day === 5 && hours === 21 && mins === 0) {
-            bgCtx.save();
-            bgCtx.strokeStyle = '#FFD700'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
-            bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, bgCanvas.height); bgCtx.stroke();
-            bgCtx.fillStyle = '#FFD700'; bgCtx.font = 'bold 10px sans-serif'; bgCtx.textAlign = 'center';
-            bgCtx.fillText("⚠️ Closing Soon", x, 15);
-            bgCtx.restore();
-        }
-
-        if (day === 1 && hours === 0 && mins === 0) {
-            bgCtx.save();
-            bgCtx.strokeStyle = '#26a69a'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
-            bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, bgCanvas.height); bgCtx.stroke();
-            bgCtx.fillStyle = '#26a69a'; bgCtx.font = 'bold 10px sans-serif'; bgCtx.textAlign = 'center';
-            bgCtx.fillText("🟢 Open Market", x, 15);
-            bgCtx.restore();
+            if ((day === 5 && hours === 21 && mins === 0) || (day === 1 && hours === 0 && mins === 0)) {
+                let x = getX(c.time);
+                if (x !== null) {
+                    warningCache.push({ x: x, isClose: day === 5 });
+                }
+            }
         }
     }
+
+    // Render dari cache (Sangat ringan)
+    warningCache.forEach(w => {
+        bgCtx.save();
+        if (w.isClose) {
+            bgCtx.strokeStyle = '#FFD700'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+            bgCtx.beginPath(); bgCtx.moveTo(w.x, 0); bgCtx.lineTo(w.x, bgCanvas.height); bgCtx.stroke();
+            bgCtx.fillStyle = '#FFD700'; bgCtx.font = 'bold 10px sans-serif'; bgCtx.textAlign = 'center';
+            bgCtx.fillText("⚠️ Closing Soon", w.x, 15);
+        } else {
+            bgCtx.strokeStyle = '#26a69a'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+            bgCtx.beginPath(); bgCtx.moveTo(w.x, 0); bgCtx.lineTo(w.x, bgCanvas.height); bgCtx.stroke();
+            bgCtx.fillStyle = '#26a69a'; bgCtx.font = 'bold 10px sans-serif'; bgCtx.textAlign = 'center';
+            bgCtx.fillText("🟢 Open Market", w.x, 15);
+        }
+        bgCtx.restore();
+    });
 }
 
 function drawMeasureTool() {
@@ -98,20 +116,37 @@ function calculateTradeLine(d) {
     let startTime = d.start.time;
     let endTime = d.end.time;
     
-    let entryIndex = null;
-    for (let i = 0; i < fullData.length; i++) {
-        if (fullData[i].time >= startTime) { entryIndex = i; break; }
+    // Optimasi Binary Search: Cari index start tanpa loop penuh
+    let entryIndex = 0;
+    let left = 0, right = fullData.length - 1;
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        if (fullData[mid].time >= startTime) {
+            entryIndex = mid;
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
     }
-    if (entryIndex === null) entryIndex = 0;
 
     let maxIdx = Math.min(fullData.length - 1, currentReplayIndex - 1);
-    for (let i = 0; i < fullData.length; i++) {
-        if (fullData[i].time > endTime) { maxIdx = Math.min(maxIdx, i - 1); break; }
+    
+    // Optimasi Binary Search: Cari index end tanpa loop penuh
+    left = 0; right = fullData.length - 1;
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        if (fullData[mid].time > endTime) {
+            maxIdx = Math.min(maxIdx, mid - 1);
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
     }
-    if (maxIdx < 0) return null;
+
+    if (maxIdx < 0 || entryIndex > maxIdx) return null;
 
     let hitEntryIndex = null;
-    for (let i = Math.max(0, entryIndex); i <= maxIdx; i++) {
+    for (let i = entryIndex; i <= maxIdx; i++) {
         let c = fullData[i];
         if (c.low <= d.start.price && c.high >= d.start.price) { hitEntryIndex = i; break; }
     }
