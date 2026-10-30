@@ -3,21 +3,33 @@
 // Deskripsi: Konversi koordinat & utilitas waktu
 // ==========================================
 
-// Fungsi krusial: Mencari candle terdekat jika waktu tidak persis ada di TF baru
+// Fungsi krusial: Mencari candle terdekat menggunakan Binary Search (Optimasi O(log n))
 function getClosestTime(time) {
-    if (!time) return null;
+    if (time === null || time === undefined || fullData.length === 0) return null;
+    
+    let left = 0;
+    let right = fullData.length - 1;
     let closestIdx = 0;
     let minDiff = Infinity;
     
-    for (let i = 0; i < fullData.length; i++) {
-        let diff = Math.abs(fullData[i].time - time);
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        let diff = Math.abs(fullData[mid].time - time);
+        
         if (diff < minDiff) {
             minDiff = diff;
-            closestIdx = i;
+            closestIdx = mid;
         }
-        if (fullData[i].time > time) break; // Early break karena data terurut
+        
+        if (fullData[mid].time === time) {
+            return fullData[mid].time;
+        } else if (fullData[mid].time < time) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
     }
-    return fullData[closestIdx] ? fullData[closestIdx].time : time;
+    return fullData[closestIdx].time;
 }
 
 function getX(time) { 
