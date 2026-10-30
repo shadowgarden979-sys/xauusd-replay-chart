@@ -35,6 +35,7 @@ let isPlaying = false;
 let playInterval = null;
 let replaySpeed = 1000;
 let isLineVisible = true;
+let currentReplayIndex = 0;
 
 // State Timeframe & Data
 let currentTF = 'M5';
