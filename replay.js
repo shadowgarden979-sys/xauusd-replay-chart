@@ -13,7 +13,7 @@ const btnToggleLine = document.getElementById('btn-toggle-line');
 const speedSelect = document.getElementById('speed-select');
 
 function updateScissorsPosition() {
-    if (!isReplayMode || !isLineVisible || isPlaying) return;
+    if (!chart || !isReplayMode || !isLineVisible || isPlaying) return;
     let idx = Math.max(0, currentReplayIndex - 1);
     if (fullData[idx]) {
         const x = getX(fullData[idx].time);
@@ -46,11 +46,11 @@ let isDraggingScissors = false;
 scissorsLine.addEventListener('touchstart', (e) => {
     isDraggingScissors = true;
     e.preventDefault(); e.stopPropagation();
-    chart.applyOptions({ handleScroll: false, handleScale: false }); 
+    if (chart) chart.applyOptions({ handleScroll: false, handleScale: false }); 
 }, { passive: false });
 
 window.addEventListener('touchmove', (e) => {
-    if (!isDraggingScissors) return;
+    if (!isDraggingScissors || !chart) return;
     e.preventDefault(); e.stopPropagation();
     
     const rect = container.getBoundingClientRect();
@@ -71,7 +71,7 @@ window.addEventListener('touchmove', (e) => {
 window.addEventListener('touchend', () => {
     if (isDraggingScissors) {
         isDraggingScissors = false;
-        chart.applyOptions({ handleScroll: true, handleScale: true }); 
+        if (chart) chart.applyOptions({ handleScroll: true, handleScale: true }); 
     }
 });
 
@@ -83,7 +83,7 @@ btnSetReplay.onclick = () => {
         btnToggleLine.innerText = "Hide Line";
         currentReplayIndex = Math.max(20, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
-        chart.timeScale().scrollToPosition(5, false);
+        if (chart) chart.timeScale().scrollToPosition(5, false);
     } else {
         btnSetReplay.style.background = '#26a69a';
         pauseReplay();
@@ -128,4 +128,6 @@ btnToggleLine.onclick = () => {
 
 speedSelect.onchange = (e) => { replaySpeed = parseInt(e.target.value); };
 
-chart.timeScale().subscribeVisibleLogicalRangeChange(() => { updateScissorsPosition(); });
+if (chart) {
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => { updateScissorsPosition(); });
+}
