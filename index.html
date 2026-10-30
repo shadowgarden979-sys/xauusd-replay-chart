@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>XAUUSD Replay - Modular</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
+        #chart-wrapper { position: relative; width: 100vw; height: 75vh; background-color: #1e1e1e; }
+        #bg-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        #chart-container { position: relative; width: 100%; height: 100%; z-index: 2; }
+        #fg-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+        
+        #date-hud {
+            position: absolute; top: 10px; left: 10px; background: rgba(43, 43, 67, 0.9);
+            color: #d1d4dc; padding: 4px 8px; border-radius: 4px; font-size: 11px;
+            z-index: 5; pointer-events: none; border: 1px solid #485c7b;
+        }
+
+        #scissors-line {
+            position: absolute; top: 0; bottom: 0; width: 2px; background-color: #2962FF; 
+            z-index: 15; display: none; pointer-events: auto; cursor: ew-resize;
+        }
+        #scissors-icon {
+            position: absolute; top: 50%; left: -15px; width: 30px; height: 30px;
+            background-color: #2962FF; color: white; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center; font-size: 16px;
+            transform: translateY(-50%); box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        #scissors-time {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            background-color: #2962FF; color: white; padding: 4px 8px; border-radius: 4px;
+            font-size: 11px; white-space: nowrap; pointer-events: none; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        #toolbar { padding: 8px; display: flex; align-items: center; background: #2B2B43; z-index: 20; position: relative; gap: 8px; }
+        .toolbar-fixed-left { position: relative; display: flex; align-items: center; }
+        #btn-tf { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        #tf-dropdown { position: absolute; top: 100%; left: 0; background: #2B2B43; border: 1px solid #485c7b; border-radius: 4px; margin-top: 5px; display: none; flex-direction: column; z-index: 30; }
+        #tf-dropdown div { padding: 10px 20px; color: white; font-size: 12px; cursor: pointer; border-bottom: 1px solid #363A45; }
+        #tf-dropdown div:active { background: #2962FF; }
+
+        .toolbar-scroll { display: flex; gap: 5px; overflow-x: auto; white-space: nowrap; flex: 1; scrollbar-width: none; padding-bottom: 2px; }
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        
+        .btn { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .btn.active { background: #2962FF; }
+        .btn-long { background: #26a69a; }
+        .btn-short { background: #ef5350; }
+
+        .toolbar-fixed-right { display: flex; align-items: center; }
+        .btn-danger { background: #ef5350; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+        #replay-panel {
+            position: absolute; bottom: 0; left: 0; width: 100vw; height: 10vh;
+            background: #2B2B43; z-index: 20; display: flex; align-items: center; justify-content: space-evenly;
+            border-top: 1px solid #485c7b;
+        }
+        .r-btn { background: #363A45; color: white; border: none; padding: 10px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; }
+        .r-btn:active { background: #2962FF; }
+        select { background: #363A45; color: white; border: 1px solid #485c7b; padding: 8px; border-radius: 4px; font-size: 14px; }
+
+        #floating-menu {
+            position: absolute; display: none; background: #2B2B43; border: 1px solid #485c7b;
+            border-radius: 6px; padding: 5px; gap: 5px; z-index: 20; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            pointer-events: auto; flex-direction: row; white-space: nowrap;
+        }
+        .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+            z-index: 100; display: none; justify-content: center; align-items: center;
+        }
+        #modal-content {
+            background: #2B2B43; padding: 20px; border-radius: 8px; width: 80%; max-width: 300px;
+            color: white; display: flex; flex-direction: column; gap: 10px;
+        }
+        #modal-content label { font-size: 12px; color: #d1d4dc; }
+        #modal-content input[type="color"] { width: 100%; height: 40px; border: none; cursor: pointer; }
+        #modal-content input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
+        #modal-content input[type="number"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
+        .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- UI TOOLBAR -->
+    <div id="toolbar">
+        <div class="toolbar-fixed-left">
+            <button id="btn-tf">M5 ▼</button>
+            <div id="tf-dropdown">
+                <div data-tf="M5">M5 (5 Menit)</div>
+                <div data-tf="M15">M15 (15 Menit)</div>
+                <div data-tf="H1">H1 (1 Jam)</div>
+                <div data-tf="H4">H4 (4 Jam)</div>
+            </div>
+        </div>
+        
+        <div class="toolbar-scroll" id="toolbar-scroll">
+            <button class="btn" id="btn-line">Garis</button>
+            <button class="btn" id="btn-box">Kotak</button>
+            <button class="btn" id="btn-fibo">Fibo</button>
+            <button class="btn" id="btn-circle">Lingkaran</button>
+            <button class="btn" id="btn-text">Teks</button>
+            <button class="btn" id="btn-arrow">Panah</button>
+            <button class="btn" id="btn-measure">Ukur</button>
+            <button class="btn btn-long" id="btn-long">Long</button>
+            <button class="btn btn-short" id="btn-short">Short</button>
+        </div>
+
+        <div class="toolbar-fixed-right">
+            <button class="btn-danger" id="btn-clear">Hapus</button>
+        </div>
+    </div>
+
+    <!-- CHART AREA -->
+    <div id="chart-wrapper">
+        <div id="date-hud">-</div>
+        
+        <div id="floating-menu">
+            <button class="f-btn" id="f-btn-snap" style="display:none;">Snap</button>
+            <button class="f-btn" id="f-btn-costum">Kostum</button>
+            <button class="f-btn" id="f-btn-delete" style="background:#ef5350;">Hapus</button>
+        </div>
+
+        <canvas id="bg-canvas"></canvas>
+        <div id="chart-container"></div>
+        <canvas id="fg-canvas"></canvas>
+        
+        <div id="scissors-line">
+            <div id="scissors-icon">✂</div>
+            <div id="scissors-time">-</div>
+        </div>
+    </div>
+
+    <!-- REPLAY PANEL -->
+    <div id="replay-panel">
+        <button class="r-btn" id="btn-set-replay" style="background:#26a69a;">Set Replay</button>
+        <button class="r-btn" id="btn-play">Play</button>
+        <button class="r-btn" id="btn-pause">Pause</button>
+        <button class="r-btn" id="btn-step">Step</button>
+        <button class="r-btn" id="btn-toggle-line">Hide Line</button>
+        <select id="speed-select">
+            <option value="1000">1x</option>
+            <option value="500">2x</option>
+            <option value="200">5x</option>
+        </select>
+    </div>
+
+    <!-- MODAL KUSTOMISASI -->
+    <div id="modal-overlay">
+        <div id="modal-content">
+            <h3 style="margin:0;">Kostumisasi</h3>
+            
+            <div id="color-input-container">
+                <label>Warna:</label>
+                <input type="color" id="input-color" value="#2962FF">
+            </div>
+            
+            <div id="text-input-container" style="display:none;">
+                <label>Teks:</label>
+                <input type="text" id="input-text">
+            </div>
+            
+            <div id="fibo-input-container" style="display:none;">
+                <label>Level Fibo (pisahkan koma):</label>
+                <input type="text" id="input-levels">
+            </div>
+
+            <div id="pos-input-container" style="display:none;">
+                <label>Transparansi Dasar (0.01 - 0.9):</label>
+                <input type="number" id="input-base-op" step="0.05" min="0.01" max="0.9" value="0.1">
+                <label>Ketegasan Running (0.1 - 1.0):</label>
+                <input type="number" id="input-active-op" step="0.05" min="0.1" max="1.0" value="0.4">
+            </div>
+
+            <div class="modal-btns">
+                <button class="btn" id="btn-close-modal">Batal</button>
+                <button class="btn" id="btn-save-modal" style="background:#26a69a;">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIBRARY & DATA -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="data_M5_Jan2011.js"></script>
+    <script src="data_M15_Jan2011.js"></script>
+    <script src="data_H1_Jan2011.js"></script>
+    <script src="data_H4_Jan2011.js"></script>
+
+    <!-- FILE MODULAR KITA (URUTAN SANGAT PENTING) -->
+    <script src="state.js"></script>
+    <script src="chart-setup.js"></script>
+    <script src="coords.js"></script>
+    <script src="draw-shapes.js"></script>
+    <script src="replay.js"></script>
+    <script src="drawing-interactions.js"></script>
+    <script src="ui.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
