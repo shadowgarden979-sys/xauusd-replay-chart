@@ -59,9 +59,14 @@ function render() {
         updateFloatingMenuPosition();
         updateScissorsPosition();
         updateDateHUD();
-    } catch (error) {
-        console.error("Render Error:", error);
-    }
+    } catch (error) } catch (error) {
+    // Menampilkan error ke layar
+    document.body.innerHTML += `<div style="position:fixed;top:50px;left:10px;right:10px;background:red;color:white;z-index:9999;padding:15px;font-size:12px;word-wrap:break-word;">
+        <b>ERROR DI RENDER:</b><br>${error.message}<br><br>
+        <b>Stack:</b><br>${error.stack}
+    </div>`;
+    console.error("Render Error:", error);
+} }
     requestAnimationFrame(render);
 }
 
