@@ -80,6 +80,15 @@
         #modal-content input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
         #modal-content input[type="number"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        <script>
+    window.onerror = function(msg, url, line) {
+        var errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position:fixed; top:0; left:0; width:100%; background:red; color:white; z-index:9999; padding:10px; font-size:12px; word-wrap:break-word;';
+        errorDiv.innerHTML = "<b>ERROR:</b> " + msg + "<br><b>File:</b> " + url + "<br><b>Line:</b> " + line;
+        document.body.appendChild(errorDiv);
+        return false;
+    };
+</script>
     </style>
 </head>
 <body>
