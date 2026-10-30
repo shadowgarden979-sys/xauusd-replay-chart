@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>XAUUSD Replay - Modular</title>
+    
+    <!-- ERROR HANDLER UNTUK DEBUG DI HP -->
+    <script>
+        window.onerror = function(msg, url, line) {
+            alert("Error Terdeteksi:\n" + msg + "\nFile: " + url + "\nBaris: " + line);
+            return false;
+        };
+    </script>
+
     <style>
         body { margin: 0; padding: 0; background-color: #1e1e1e; font-family: sans-serif; overflow: hidden; }
         #chart-wrapper { position: relative; width: 100vw; height: 75vh; background-color: #1e1e1e; }
@@ -80,15 +89,6 @@
         #modal-content input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
         #modal-content input[type="number"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-        <script>
-    window.onerror = function(msg, url, line) {
-        var errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'position:fixed; top:0; left:0; width:100%; background:red; color:white; z-index:9999; padding:10px; font-size:12px; word-wrap:break-word;';
-        errorDiv.innerHTML = "<b>ERROR:</b> " + msg + "<br><b>File:</b> " + url + "<br><b>Line:</b> " + line;
-        document.body.appendChild(errorDiv);
-        return false;
-    };
-</script>
     </style>
 </head>
 <body>
@@ -191,7 +191,10 @@
     </div>
 
     <!-- LIBRARY & DATA -->
-    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- CDN DIGANTI KE JSDELIVR -->
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- PASTIKAN FILE DI BAWAH INI ADA DI REPO GITHUB ANDA -->
     <script src="data_M5_Jan2011.js"></script>
     <script src="data_M15_Jan2011.js"></script>
     <script src="data_H1_Jan2011.js"></script>
@@ -207,4 +210,4 @@
     <script src="ui.js"></script>
     <script src="main.js"></script>
 </body>
-</html>
+    </html>
