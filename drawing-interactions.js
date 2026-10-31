@@ -104,8 +104,10 @@ function handleStart(e) {
 
             if (currentTool === 'position-long' || currentTool === 'position-short') {
             let isLong = currentTool === 'position-long';
-            let tp = isLong ? coords.price + 5 : coords.price - 5;
-            let sl = isLong ? coords.price - 5 : coords.price + 5;
+// PERBAIKAN MASALAH 7: Jarak dinamis 0.3% dari harga (menggantikan hardcode 5.00)
+let distance = coords.price * 0.003; 
+let tp = isLong ? coords.price + distance : coords.price - distance;
+let sl = isLong ? coords.price - distance : coords.price + distance;
     
     // PERBAIKAN: Hitung endTime mandiri tanpa bergantung pada index candle (mendukung area masa depan)
     let tfSec = getTFSeconds(currentTF);
