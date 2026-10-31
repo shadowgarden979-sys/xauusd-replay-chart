@@ -103,33 +103,33 @@ function handleStart(e) {
             const def = defaultSettings[currentTool] || {};
 
             if (currentTool === 'position-long' || currentTool === 'position-short') {
-                let isLong = currentTool === 'position-long';
-                let tp = isLong ? coords.price + 5 : coords.price - 5;
-                let sl = isLong ? coords.price - 5 : coords.price + 5;
-                
-                let entryLogical = Math.round(chart.timeScale().coordinateToLogical(x));
-                let endIdx = Math.min(fullData.length - 1, entryLogical + 20);
-                let endTime = fullData[endIdx] ? fullData[endIdx].time : coords.time + 3600;
+            let isLong = currentTool === 'position-long';
+            let tp = isLong ? coords.price + 5 : coords.price - 5;
+            let sl = isLong ? coords.price - 5 : coords.price + 5;
+    
+    // PERBAIKAN: Hitung endTime mandiri tanpa bergantung pada index candle (mendukung area masa depan)
+    let tfSec = getTFSeconds(currentTF);
+    let endTime = coords.time + (tfSec * 20); // Default 20 candle ke depan
 
-                let newPos = { 
-                    type: currentTool, start: coords, end: { time: endTime, price: coords.price }, tp, sl,
-                    baseOpacity: def.baseOpacity !== undefined ? def.baseOpacity : 0.1,
-                    activeOpacity: def.activeOpacity !== undefined ? def.activeOpacity : 0.4
-                };
-                drawings.push(newPos); selectedDrawing = newPos;
-                setTool('pan'); saveToLocalStorage();
-            } else if (currentTool === 'circle') {
-                let entryLogical = Math.round(chart.timeScale().coordinateToLogical(x));
-                let endIdx = Math.min(fullData.length - 1, entryLogical + 10);
-                let endTime = fullData[endIdx] ? fullData[endIdx].time : coords.time + 1800;
+    let newPos = { 
+        type: currentTool, start: coords, end: { time: endTime, price: coords.price }, tp, sl,
+        baseOpacity: def.baseOpacity !== undefined ? def.baseOpacity : 0.1,
+        activeOpacity: def.activeOpacity !== undefined ? def.activeOpacity : 0.4
+    };
+    drawings.push(newPos); selectedDrawing = newPos;
+    setTool('pan'); saveToLocalStorage();
+} else if (currentTool === 'circle') {
+    // PERBAIKAN: Hitung endTime mandiri
+    let tfSec = getTFSeconds(currentTF);
+    let endTime = coords.time + (tfSec * 10); // Default 10 candle ke depan
 
-                let newCircle = { 
-                    type: 'circle', start: coords, end: { time: endTime, price: coords.price + 5 },
-                    color: def.color || '#2962FF'
-                };
-                drawings.push(newCircle); selectedDrawing = newCircle;
-                setTool('pan'); saveToLocalStorage();
-            } else if (currentTool === 'text') {
+    let newCircle = { 
+        type: 'circle', start: coords, end: { time: endTime, price: coords.price + 5 },
+        color: def.color || '#2962FF'
+    };
+    drawings.push(newCircle); selectedDrawing = newCircle;
+    setTool('pan'); saveToLocalStorage();
+}else if (currentTool === 'text') {
                 let text = prompt("Masukkan teks:", def.text || "Teks");
                 if (text) {
                     let newText = { type: 'text', start: coords, end: coords, text: text, color: def.color || '#d1d4dc' };
