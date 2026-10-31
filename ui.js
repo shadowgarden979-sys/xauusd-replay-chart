@@ -16,16 +16,44 @@ tfDropdown.querySelectorAll('div').forEach(el => {
     el.onclick = (e) => {
         const newTF = el.getAttribute('data-tf');
         if (newTF && allData[newTF].length > 0) {
+            
+            // PERBAIKAN MASALAH 4: Tangkap timestamp replay sebelum ganti TF
+            let currentReplayTime = null;
+            if (isReplayMode && fullData.length > 0) {
+                let idx = Math.max(0, currentReplayIndex - 1);
+                currentReplayTime = fullData[idx].time;
+            }
+
             currentTF = newTF;
             fullData = allData[currentTF];
             btnTF.innerText = currentTF + ' ▼';
             
-            if (isReplayMode) {
-                currentReplayIndex = Math.max(20, fullData.length - 100);
+            if (isReplayMode && currentReplayTime !== null) {
+                // Cari index baru menggunakan Binary Search
+                let newIdx = 0;
+                let left = 0, right = fullData.length - 1;
+                while (left <= right) {
+                    let mid = Math.floor((left + right) / 2);
+                    if (fullData[mid].time >= currentReplayTime) {
+                        newIdx = mid;
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                }
+                
+                currentReplayIndex = newIdx;
+                series.setData(fullData.slice(0, currentReplayIndex));
+            } else if (isReplayMode && currentReplayTime === null) {
+                currentReplayIndex = Math.max(0, fullData.length - 100);
                 series.setData(fullData.slice(0, currentReplayIndex));
             } else {
                 series.setData(fullData);
             }
+            
+            // Perbarui UI setelah ganti TF
+            if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+            if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
             
             chart.timeScale().fitContent();
         }
