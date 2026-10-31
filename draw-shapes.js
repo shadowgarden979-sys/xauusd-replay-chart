@@ -3,7 +3,6 @@
 // Deskripsi: Semua fungsi menggambar di Canvas
 // ==========================================
 
-// --- OPTIMASI: Cache untuk warning market ---
 let warningCache = [];
 let lastWarningRange = "";
 
@@ -32,7 +31,6 @@ function drawWarnings() {
     let limit = isReplayMode ? currentReplayIndex - 1 : fullData.length - 1;
     if (limit < 0 || !chart) return;
 
-    // Optimasi: Cek apakah range chart berubah. Jika tidak, gambar dari cache.
     let range = chart.timeScale().getVisibleLogicalRange();
     if (!range) return;
     
@@ -58,7 +56,6 @@ function drawWarnings() {
         }
     }
 
-    // Render dari cache (Sangat ringan)
     warningCache.forEach(w => {
         bgCtx.save();
         if (w.isClose) {
@@ -116,7 +113,6 @@ function calculateTradeLine(d) {
     let startTime = d.start.time;
     let endTime = d.end.time;
     
-    // Optimasi Binary Search: Cari index start tanpa loop penuh
     let entryIndex = 0;
     let left = 0, right = fullData.length - 1;
     while (left <= right) {
@@ -129,9 +125,8 @@ function calculateTradeLine(d) {
         }
     }
 
-    let maxIdx = Math.min(fullData.length - 1, currentReplayIndex - 1);
+    let maxIdx = Math.min(fullData.length - 1, isReplayMode ? currentReplayIndex - 1 : fullData.length - 1);
     
-    // Optimasi Binary Search: Cari index end tanpa loop penuh
     left = 0; right = fullData.length - 1;
     while (left <= right) {
         let mid = Math.floor((left + right) / 2);
@@ -148,7 +143,10 @@ function calculateTradeLine(d) {
     let hitEntryIndex = null;
     for (let i = entryIndex; i <= maxIdx; i++) {
         let c = fullData[i];
-        if (c.low <= d.start.price && c.high >= d.start.price) { hitEntryIndex = i; break; }
+        // Toleransi desimal 0.05 untuk XAUUSD
+        if (c.low <= d.start.price + 0.05 && c.high >= d.start.price - 0.05) { 
+            hitEntryIndex = i; break; 
+        }
     }
     
     if (hitEntryIndex === null) return null; 
@@ -202,24 +200,27 @@ function drawPositionBg(d) {
             yExit = yEntry + (yExit - yEntry) * ratio;
         }
 
-        if (isLong) yExit = Math.max(yTP, Math.min(yEntry, yExit));
-        else yExit = Math.min(ySL, Math.max(yEntry, yExit));
-
+        // PERBAIKAN CLAMPING: Batasi garis agar tidak melewati TP/SL sebenarnya
         if (isLong) {
-            if (yExit < yEntry - 1) {
-                bgCtx.fillStyle = `rgba(38, 166, 154, ${activeOp})`; 
-                bgCtx.beginPath(); bgCtx.rect(xStart, yExit, xExit - xStart, yEntry - yExit); bgCtx.fill();
-            } else if (yExit > yEntry + 1) {
-                bgCtx.fillStyle = `rgba(239, 83, 80, ${activeOp})`; 
-                bgCtx.beginPath(); bgCtx.rect(xStart, yEntry, xExit - xStart, yExit - yEntry); bgCtx.fill();
-            }
-        } else { 
-            if (yExit > yEntry + 1) { 
-                bgCtx.fillStyle = `rgba(239, 83, 80, ${activeOp})`; 
-                bgCtx.beginPath(); bgCtx.rect(xStart, yEntry, xExit - xStart, yExit - yEntry); bgCtx.fill();
-            } else if (yExit < yEntry - 1) { 
-                bgCtx.fillStyle = `rgba(38, 166, 154, ${activeOp})`; 
-                bgCtx.beginPath(); bgCtx.rect(xStart, yExit, xExit - xStart, yEntry - yExit); bgCtx.fill();
+            yExit = Math.max(yTP, Math.min(ySL, yExit)); 
+        } else {
+            yExit = Math.max(ySL, Math.min(yTP, yExit));
+        }
+
+        // PERBAIKAN WARNA: Berdasarkan untung/rugi, bukan posisi Y semata
+        let isWin = isLong ? (yExit < yEntry) : (yExit > yEntry);
+        
+        if (Math.abs(yExit - yEntry) > 1) { // Jika ada pergerakan berarti
+            if (isWin) {
+                bgCtx.fillStyle = `rgba(38, 166, 154, ${activeOp})`; // Hijau (Profit)
+                bgCtx.beginPath(); 
+                bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); 
+                bgCtx.fill();
+            } else {
+                bgCtx.fillStyle = `rgba(239, 83, 80, ${activeOp})`; // Merah (Loss)
+                bgCtx.beginPath(); 
+                bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); 
+                bgCtx.fill();
             }
         }
 
