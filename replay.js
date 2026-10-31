@@ -60,7 +60,8 @@ window.addEventListener('touchmove', (e) => {
     let newIdx = Math.round(chart.timeScale().coordinateToLogical(x));
     if (newIdx === null) return;
     
-    newIdx = Math.max(20, Math.min(newIdx, fullData.length - 1));
+    // PERBAIKAN MASALAH 3: Batas mundur menjadi 0 (candle pertama)
+    newIdx = Math.max(0, Math.min(newIdx, fullData.length - 1));
     
     if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
@@ -81,7 +82,7 @@ btnSetReplay.onclick = () => {
         btnSetReplay.style.background = '#ef5350';
         isLineVisible = true;
         btnToggleLine.innerText = "Hide Line";
-        currentReplayIndex = Math.max(20, fullData.length - 100); 
+        currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
         if (chart) chart.timeScale().scrollToPosition(5, false);
     } else {
