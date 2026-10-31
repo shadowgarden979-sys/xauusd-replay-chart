@@ -19,11 +19,18 @@ function formatFullTime(timestamp) {
     return { dayName, dateStr, monthStr, yearStr, hh, mm };
 }
 
+// PERBAIKAN MASALAH 6: Mencegah update DOM berulang di 60fps
+let lastHudTime = -1; 
+
 function updateDateHUD() {
     let idx = isReplayMode ? Math.max(0, currentReplayIndex - 1) : fullData.length - 1;
     if (fullData[idx]) {
-        let t = formatFullTime(fullData[idx].time);
-        document.getElementById('date-hud').innerText = `${t.dayName}, ${t.dateStr} ${t.monthStr} ${t.yearStr} | ${t.hh}:${t.mm}`;
+        let currentTime = fullData[idx].time;
+        if (currentTime !== lastHudTime) { // Hanya update jika waktunya benar-benar berubah
+            lastHudTime = currentTime;
+            let t = formatFullTime(currentTime);
+            document.getElementById('date-hud').innerText = `${t.dayName}, ${t.dateStr} ${t.monthStr} ${t.yearStr} | ${t.hh}:${t.mm}`;
+        }
     }
 }
 
