@@ -3,7 +3,15 @@
 // Deskripsi: Konversi koordinat & utilitas waktu
 // ==========================================
 
-// Fungsi krusial: Mencari candle terdekat menggunakan Binary Search (Optimasi O(log n))
+function getTFSeconds(tf) {
+    if (tf === 'M5') return 300;
+    if (tf === 'M15') return 900;
+    if (tf === 'H1') return 3600;
+    if (tf === 'H4') return 14400;
+    return 300;
+}
+
+// Fungsi krusial: Mencari candle terdekat menggunakan Binary Search
 function getClosestTime(time) {
     if (time === null || time === undefined || fullData.length === 0) return null;
     
@@ -32,23 +40,57 @@ function getClosestTime(time) {
     return fullData[closestIdx].time;
 }
 
+// Diperbarui: Mendukung ekstrapolasi ke masa depan (area kosong)
 function getX(time) { 
-    if (time === null || time === undefined) return null;
-    const closest = getClosestTime(time);
-    if (closest === null) return null;
-    return chart.timeScale().timeToCoordinate(closest); 
+    if (time === null || time === undefined || !chart) return null;
+    
+    let lastIdx = isReplayMode ? currentReplayIndex - 1 : fullData.length - 1;
+    if (lastIdx < 0) return null;
+    let lastValidTime = fullData[lastIdx].time;
+    
+    if (time <= lastValidTime) {
+        const closest = getClosestTime(time);
+        return closest !== null ? chart.timeScale().timeToCoordinate(closest) : null;
+    } else {
+        // Ekstrapolasi X ke area masa depan
+        let lastX = chart.timeScale().timeToCoordinate(lastValidTime);
+        if (lastX === null) return null;
+        
+        let tfSec = getTFSeconds(currentTF);
+        let barsAhead = (time - lastValidTime) / tfSec;
+        let barSpacing = chart.timeScale().options().barSpacing || 8;
+        
+        return lastX + (barsAhead * barSpacing);
+    }
 }
 
 function getY(price) { 
     return series.priceToCoordinate(price); 
 }
 
+// Diperbarui: Mendukung ekstrapolasi waktu dari area kosong
 function getTimeFromX(x) {
-    const logical = chart.timeScale().coordinateToLogical(x);
-    if (logical === null) return null;
-    let idx = Math.round(logical);
-    if (idx >= 0 && idx < fullData.length) return fullData[idx].time;
-    return null;
+    if (!chart) return null;
+    
+    let lastIdx = isReplayMode ? currentReplayIndex - 1 : fullData.length - 1;
+    if (lastIdx < 0) return null;
+    let lastValidTime = fullData[lastIdx].time;
+    let lastX = chart.timeScale().timeToCoordinate(lastValidTime);
+    
+    if (lastX !== null && x > lastX) {
+        // Hitung waktu di masa depan berdasarkan jarak X
+        let barSpacing = chart.timeScale().options().barSpacing || 8;
+        let barsAhead = (x - lastX) / barSpacing;
+        let tfSec = getTFSeconds(currentTF);
+        
+        return lastValidTime + (Math.round(barsAhead) * tfSec);
+    } else {
+        const logical = chart.timeScale().coordinateToLogical(x);
+        if (logical === null) return null;
+        let idx = Math.round(logical);
+        if (idx >= 0 && idx <= lastIdx) return fullData[idx].time;
+        return null;
+    }
 }
 
 function getChartCoords(x, y) {
