@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>XAUUSD Replay - Modular</title>
     
-    <!-- ERROR HANDLER UNTUK DEBUG DI HP -->
     <script>
         window.onerror = function(msg, url, line) {
             alert("Error Terdeteksi:\n" + msg + "\nFile: " + url + "\nBaris: " + line);
@@ -43,11 +42,13 @@
         }
 
         #toolbar { padding: 8px; display: flex; align-items: center; background: #2B2B43; z-index: 20; position: relative; gap: 8px; }
-        .toolbar-fixed-left { position: relative; display: flex; align-items: center; }
-        #btn-tf { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
-        #tf-dropdown { position: absolute; top: 100%; left: 0; background: #2B2B43; border: 1px solid #485c7b; border-radius: 4px; margin-top: 5px; display: none; flex-direction: column; z-index: 30; }
-        #tf-dropdown div { padding: 10px 20px; color: white; font-size: 12px; cursor: pointer; border-bottom: 1px solid #363A45; }
-        #tf-dropdown div:active { background: #2962FF; }
+        .toolbar-fixed-left { position: relative; display: flex; align-items: center; gap: 5px; }
+        
+        #btn-tf, #btn-mode { background: #363A45; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        
+        #tf-dropdown, #mode-dropdown { position: absolute; top: 100%; left: 0; background: #2B2B43; border: 1px solid #485c7b; border-radius: 4px; margin-top: 5px; display: none; flex-direction: column; z-index: 30; }
+        #tf-dropdown div, #mode-dropdown div { padding: 10px 20px; color: white; font-size: 12px; cursor: pointer; border-bottom: 1px solid #363A45; }
+        #tf-dropdown div:active, #mode-dropdown div:active { background: #2962FF; }
 
         .toolbar-scroll { display: flex; gap: 5px; overflow-x: auto; white-space: nowrap; flex: 1; scrollbar-width: none; padding-bottom: 2px; }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
@@ -75,23 +76,18 @@
             pointer-events: auto; flex-direction: row; white-space: nowrap;
         }
         .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
-        .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
-
-        /* TAMBAHKAN BARIS INI UNTUK INDIKATOR SNAP */
         .snap-active { background-color: #2962FF !important; color: white; }
 
-        #modal-overlay {
+        #modal-overlay, #setup-modal-overlay, #history-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
             z-index: 100; display: none; justify-content: center; align-items: center;
         }
-        #modal-content {
+        #modal-content, #setup-modal-content, #history-modal-content {
             background: #2B2B43; padding: 20px; border-radius: 8px; width: 80%; max-width: 300px;
             color: white; display: flex; flex-direction: column; gap: 10px;
         }
-        #modal-content label { font-size: 12px; color: #d1d4dc; }
-        #modal-content input[type="color"] { width: 100%; height: 40px; border: none; cursor: pointer; }
-        #modal-content input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
-        #modal-content input[type="number"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; }
+        #modal-content label, #setup-modal-content label { font-size: 12px; color: #d1d4dc; }
+        #modal-content input, #setup-modal-content input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
     </style>
 </head>
@@ -100,12 +96,21 @@
     <!-- UI TOOLBAR -->
     <div id="toolbar">
         <div class="toolbar-fixed-left">
-            <button id="btn-tf">M5 ▼</button>
-            <div id="tf-dropdown">
-                <div data-tf="M5">M5 (5 Menit)</div>
-                <div data-tf="M15">M15 (15 Menit)</div>
-                <div data-tf="H1">H1 (1 Jam)</div>
-                <div data-tf="H4">H4 (4 Jam)</div>
+            <div style="position: relative;">
+                <button id="btn-tf">M5 ▼</button>
+                <div id="tf-dropdown">
+                    <div data-tf="M5">M5 (5 Menit)</div>
+                    <!-- TF lain akan dimunculkan dinamis oleh JS jika datanya ada -->
+                </div>
+            </div>
+
+            <div style="position: relative;">
+                <button id="btn-mode" style="background:#485c7b;">MODE ▼</button>
+                <div id="mode-dropdown">
+                    <div data-mode="backtest">MODE BACKTEST</div>
+                    <div data-mode="simulation">MODE SIMULASI</div>
+                    <div data-mode="history">MODE RIWAYAT TRADE</div>
+                </div>
             </div>
         </div>
         
@@ -160,33 +165,28 @@
         </select>
     </div>
 
-    <!-- MODAL KUSTOMISASI -->
+    <!-- MODAL KUSTOMISASI GAMBAR -->
     <div id="modal-overlay">
         <div id="modal-content">
             <h3 style="margin:0;">Kostumisasi</h3>
-            
             <div id="color-input-container">
                 <label>Warna:</label>
                 <input type="color" id="input-color" value="#2962FF">
             </div>
-            
             <div id="text-input-container" style="display:none;">
                 <label>Teks:</label>
                 <input type="text" id="input-text">
             </div>
-            
             <div id="fibo-input-container" style="display:none;">
                 <label>Level Fibo (pisahkan koma):</label>
                 <input type="text" id="input-levels">
             </div>
-
             <div id="pos-input-container" style="display:none;">
                 <label>Transparansi Dasar (0.01 - 0.9):</label>
                 <input type="number" id="input-base-op" step="0.05" min="0.01" max="0.9" value="0.1">
                 <label>Ketegasan Running (0.1 - 1.0):</label>
                 <input type="number" id="input-active-op" step="0.05" min="0.1" max="1.0" value="0.4">
             </div>
-
             <div class="modal-btns">
                 <button class="btn" id="btn-close-modal">Batal</button>
                 <button class="btn" id="btn-save-modal" style="background:#26a69a;">Simpan</button>
@@ -194,24 +194,53 @@
         </div>
     </div>
 
-    <!-- LIBRARY & DATA -->
-    <!-- CDN DIGANTI KE JSDELIVR -->
+    <!-- MODAL SETUP SIMULASI -->
+    <div id="setup-modal-overlay">
+        <div id="setup-modal-content">
+            <h3 style="margin:0;">Setup Simulasi</h3>
+            <label>Tanggal Mulai:</label>
+            <input type="date" id="sim-start-date" min="2012-01-01" max="2012-12-31">
+            <label>Tanggal Selesai:</label>
+            <input type="date" id="sim-end-date" min="2012-01-01" max="2012-12-31">
+            <label>Modal Awal ($):</label>
+            <input type="number" id="sim-balance" value="100" min="1">
+            <label>Risk per Trade (%):</label>
+            <input type="number" id="sim-risk" value="1" min="0.1" max="100" step="0.1">
+            <div class="modal-btns">
+                <button class="btn" id="btn-close-setup">Batal</button>
+                <button class="btn" id="btn-start-sim" style="background:#26a69a;">Mulai Simulasi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RIWAYAT TRADE -->
+    <div id="history-modal-overlay">
+        <div id="history-modal-content">
+            <h3 style="margin:0;">Riwayat & Portofolio</h3>
+            <p>Modal Awal: <span id="hud-balance">$100.00</span></p>
+            <p>Risk: <span id="hud-risk">1.0</span>%</p>
+            <p style="color:#888; font-size:12px; text-align:center; margin-top:20px;">(Tabel Riwayat Trade akan diisi pada Tahap 3)</p>
+            <div class="modal-btns">
+                <button class="btn" id="btn-close-history">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIBRARY -->
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     
-    <!-- PASTIKAN FILE DI BAWAH INI ADA DI REPO GITHUB ANDA -->
-    <script src="data_M5_Jan2011.js"></script>
-    <script src="data_M15_Jan2011.js"></script>
-    <script src="data_H1_Jan2011.js"></script>
-    <script src="data_H4_Jan2011.js"></script>
+    <!-- DATA AOA BARU (Hanya memuat M5 2012 untuk awal) -->
+    <script src="data_M5_2012.js"></script>
 
-    <!-- FILE MODULAR KITA (URUTAN SANGAT PENTING) -->
+    <!-- FILE MODULAR KITA -->
     <script src="state.js"></script>
     <script src="chart-setup.js"></script>
     <script src="coords.js"></script>
     <script src="draw-shapes.js"></script>
     <script src="replay.js"></script>
+    <script src="simulation.js"></script>
     <script src="drawing-interactions.js"></script>
     <script src="ui.js"></script>
     <script src="main.js"></script>
 </body>
-    </html>
+</html>
