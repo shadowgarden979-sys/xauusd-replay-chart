@@ -33,8 +33,11 @@ function loadDataScript(tf, year) {
 }
 
 // 3. Inisialisasi Data Awal (M5 2012)
-let allRawData = { 'M5': null, 'M15': null, 'H1': null, 'H4': null };
+// PERBAIKAN: Hapus 'let allRawData' karena sudah ada di state.js
 allRawData['M5'] = typeof data_M5_2012 !== 'undefined' ? data_M5_2012 : [];
+allRawData['M15'] = null;
+allRawData['H1'] = null;
+allRawData['H4'] = null;
 
 // 4. Cek Ketersediaan Library & Data
 if (typeof LightweightCharts === 'undefined') {
@@ -48,7 +51,7 @@ if (allRawData['M5'].length === 0) {
 }
 
 // 5. Parsing Data & Set Data Awal
-allData = {};
+// PERBAIKAN: Hapus 'allData = {}' jika di state.js sudah ada, atau biarkan jika state.js hanya 'let allData;'
 allData['M5'] = parseAoA(allRawData['M5']);
 allData['M15'] = [];
 allData['H1'] = [];
