@@ -78,5 +78,4 @@ function render() {
     requestAnimationFrame(render);
 }
 
-// --- Mulai Aplikasi ---
-render();
+
