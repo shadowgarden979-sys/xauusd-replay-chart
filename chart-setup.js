@@ -1,14 +1,17 @@
 // ==========================================
 // FILE: chart-setup.js
-// Deskripsi: Inisialisasi chart & Parser Data AoA (Async)
+// Deskripsi: Inisialisasi chart & Parser Data AoA
 // ==========================================
+
+let isLoadingData = false;
+const loadingPromises = {}; // Cache untuk mencegah duplikasi script
 
 // 1. Parser Asinkron dengan Progress Callback
 async function parseAoAAsync(aoaArray, progressCallback) {
     if (!Array.isArray(aoaArray)) return [];
     const result = [];
     const total = aoaArray.length;
-    const chunkSize = 5000; // Proses 5000 data per iterasi agar tidak freeze
+    const chunkSize = 5000; 
     
     for (let i = 0; i < total; i += chunkSize) {
         const chunk = aoaArray.slice(i, i + chunkSize);
@@ -19,151 +22,98 @@ async function parseAoAAsync(aoaArray, progressCallback) {
                 open: item[1], high: item[2], low: item[3], close: item[4]
             });
         }
-        // Beri napas ke browser (UI) selama 0 ms sebelum lanjut ke chunk berikutnya
         await new Promise(r => setTimeout(r, 0));
         if (progressCallback) progressCallback(Math.min(100, Math.round(((i + chunkSize) / total) * 100)));
     }
     return result;
 }
 
-// 2. Fungsi Lazy Load (Untuk simulasi nanti)
+// 2. Loader Dinamis (Anti Duplikat & Anti Undefined)
 function loadDataScript(tf, year) {
-    return new Promise((resolve, reject) => {
-        const varName = `data_${tf}_${year}`;
-        if (window[varName]) { resolve(window[varName]); return; }
+    const varName = `data_${tf}_${year}`;
+    
+    // Jika data sudah ada di memori
+    if (window[varName]) {
+        return Promise.resolve(window[varName]);
+    }
+    
+    // Jika proses unduh file ini sedang berjalan, kembalikan Promise yang sama
+    if (loadingPromises[varName]) {
+        return loadingPromises[varName];
+    }
+
+    // Buat Promise baru untuk mengunduh
+    loadingPromises[varName] = new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = `${varName}.js`;
-        script.onload = () => { if (window[varName]) resolve(window[varName]); else reject(new Error(`Variabel ${varName} tidak ditemukan.`)); };
-        script.onerror = () => reject(new Error(`Gagal memuat file ${varName}.js`));
+        
+        script.onload = () => {
+            // Polling: Pastikan variabel benar-benar sudah dieksekusi oleh browser
+            let attempts = 0;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (window[varName]) {
+                    clearInterval(checkInterval);
+                    resolve(window[varName]);
+                } else if (attempts > 30) { // Maksimal tunggu 3 detik
+                    clearInterval(checkInterval);
+                    delete loadingPromises[varName];
+                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan.`));
+                }
+            }, 100);
+        };
+        
+        script.onerror = () => {
+            delete loadingPromises[varName];
+            reject(new Error(`Gagal mengunduh file ${varName}.js. Pastikan file ada di GitHub.`));
+        };
+        
         document.head.appendChild(script);
     });
+
+    return loadingPromises[varName];
 }
 
-// 3. Fungsi Inisialisasi Utama
-async function initApp() {
-    const overlay = document.getElementById('loading-overlay');
-    const bar = document.getElementById('loading-bar');
-    const text = document.getElementById('loading-text');
-
-    // Setup Data Awal
-    allRawData['M5'] = typeof data_M5_2012 !== 'undefined' ? data_M5_2012 : [];
-    allRawData['M15'] = null;
-    allRawData['H1'] = null;
-    allRawData['H4'] = null;
-
-    if (typeof LightweightCharts === 'undefined') {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat (CDN Diblokir).</h2>';
-        return;
-    }
-    if (allRawData['M5'].length === 0) {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: File data_M5_2012.js gagal dimuat atau kosong.</h2>';
-        return;
-    }
-
-    // Parsing Data Bertahap
-    allData['M5'] = await parseAoAAsync(allRawData['M5'], (pct) => {
-        bar.style.width = pct + '%';
-        text.innerText = pct + '%';
-    });
-    allData['M15'] = []; allData['H1'] = []; allData['H4'] = [];
-    fullData = allData['M5'];
-
-    // Inisialisasi Chart (Setelah data siap)
-    container = document.getElementById('chart-container');
-    chart = LightweightCharts.createChart(container, {
-        width: container.clientWidth, height: container.clientHeight,
-        layout: { background: { color: 'transparent' }, textColor: '#d1d4dc' },
-        grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
-        timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b', rightOffset: 10, barSpacing: 8 },
-        rightPriceScale: { autoScale: false, borderColor: '#485c7b' },
-        handleScroll: { horzTouchDrag: true, vertTouchDrag: true },
-        handleScale: { axisPressedMouseMove: { time: true, price: true }, pinch: true },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Hidden }
-    });
-
-    series = chart.addCandlestickSeries({
-        upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-    });
-
-    let initialReplayIndex = Math.max(0, fullData.length - 100);
-    currentReplayIndex = initialReplayIndex;
-    series.setData(fullData.slice(0, initialReplayIndex));
-    chart.timeScale().setVisibleLogicalRange({ from: initialReplayIndex - 50, to: initialReplayIndex + 10 });
-
-    // Inisialisasi Canvas
-    bgCanvas = document.getElementById('bg-canvas');
-    bgCtx = bgCanvas.getContext('2d');
-    fgCanvas = document.getElementById('fg-canvas');
-    fgCtx = fgCanvas.getContext('2d');
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Sembunyikan Loading dan Jalankan Render Loop
-setTimeout(() => {
-    overlay.style.display = 'none';
-    
-    // Panggil event listener setelah container & canvas 100% siap
-    if (typeof window.initDrawingEvents === 'function') {
-        window.initDrawingEvents();
-    }
-    
-    if (typeof render === 'function') {
-        render(); // Panggil render setelah semua siap
-    }
-}, 500);
-}
-
-function resizeCanvas() {
-    if (!container) return;
-    bgCanvas.width = fgCanvas.width = container.clientWidth;
-    bgCanvas.height = fgCanvas.height = container.clientHeight;
-}
-
-// Jalankan Aplikasi
-initApp();
-
-// ==========================================
-// FUNGSI BARU: Ganti TF Dinamis & Load Data
-// ==========================================
-
+// 3. Fungsi Ganti TF
 async function loadTFData(newTF) {
-    const overlay = document.getElementById('loading-overlay');
-    const bar = document.getElementById('loading-bar');
-    const text = document.getElementById('loading-text');
+    if (isLoadingData) return; 
     
-    // Jika data sudah ada di memori, langsung pakai
     if (allData[newTF] && allData[newTF].length > 0) {
         fullData = allData[newTF];
         applyTFChange(newTF);
+        document.getElementById('btn-tf').innerText = newTF + ' ▼';
         return;
     }
 
-    // Tampilkan loading
+    const overlay = document.getElementById('loading-overlay');
+    const bar = document.getElementById('loading-bar');
+    const text = document.getElementById('loading-text');
+    const btnTF = document.getElementById('btn-tf');
+    const originalText = btnTF.innerText;
+
+    isLoadingData = true;
     overlay.style.display = 'flex';
     bar.style.width = '0%';
-    text.innerText = 'Memuat ' + newTF + '...';
+    text.innerText = `Memuat ${newTF}...`;
 
     try {
-        // Panggil file dinamis (asumsi tahun 2012 untuk saat ini)
         const rawData = await loadDataScript(newTF, 2012);
         
-        // Parsing data
         allData[newTF] = await parseAoAAsync(rawData, (pct) => {
             bar.style.width = pct + '%';
-            text.innerText = pct + '%';
+            text.innerText = `Memuat ${newTF}... ${pct}%`;
         });
         
         fullData = allData[newTF];
         applyTFChange(newTF);
+        btnTF.innerText = newTF + ' ▼'; 
         
     } catch (err) {
         alert(err.message);
-        // Kembalikan tombol TF ke TF sebelumnya jika gagal
-        document.getElementById('btn-tf').innerText = currentTF + ' ▼';
+        btnTF.innerText = originalText; 
     } finally {
         overlay.style.display = 'none';
+        isLoadingData = false;
     }
 }
 
@@ -203,3 +153,75 @@ function applyTFChange(newTF) {
     
     chart.timeScale().fitContent();
 }
+
+// 4. Inisialisasi Awal
+async function initApp() {
+    const overlay = document.getElementById('loading-overlay');
+    const bar = document.getElementById('loading-bar');
+    const text = document.getElementById('loading-text');
+
+    allRawData['M5'] = typeof data_M5_2012 !== 'undefined' ? data_M5_2012 : [];
+    allRawData['M15'] = null;
+    allRawData['H1'] = null;
+    allRawData['H4'] = null;
+
+    if (typeof LightweightCharts === 'undefined') {
+        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat (CDN Diblokir).</h2>';
+        return;
+    }
+    if (allRawData['M5'].length === 0) {
+        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: File data_M5_2012.js gagal dimuat atau kosong.</h2>';
+        return;
+    }
+
+    allData['M5'] = await parseAoAAsync(allRawData['M5'], (pct) => {
+        bar.style.width = pct + '%';
+        text.innerText = pct + '%';
+    });
+    allData['M15'] = []; allData['H1'] = []; allData['H4'] = [];
+    fullData = allData['M5'];
+
+    container = document.getElementById('chart-container');
+    chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth, height: container.clientHeight,
+        layout: { background: { color: 'transparent' }, textColor: '#d1d4dc' },
+        grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
+        timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b', rightOffset: 10, barSpacing: 8 },
+        rightPriceScale: { autoScale: false, borderColor: '#485c7b' },
+        handleScroll: { horzTouchDrag: true, vertTouchDrag: true },
+        handleScale: { axisPressedMouseMove: { time: true, price: true }, pinch: true },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Hidden }
+    });
+
+    series = chart.addCandlestickSeries({
+        upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+    });
+
+    let initialReplayIndex = Math.max(0, fullData.length - 100);
+    currentReplayIndex = initialReplayIndex;
+    series.setData(fullData.slice(0, initialReplayIndex));
+    chart.timeScale().setVisibleLogicalRange({ from: initialReplayIndex - 50, to: initialReplayIndex + 10 });
+
+    bgCanvas = document.getElementById('bg-canvas');
+    bgCtx = bgCanvas.getContext('2d');
+    fgCanvas = document.getElementById('fg-canvas');
+    fgCtx = fgCanvas.getContext('2d');
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        if (typeof window.initDrawingEvents === 'function') window.initDrawingEvents();
+        if (typeof render === 'function') render();
+    }, 500);
+}
+
+function resizeCanvas() {
+    if (!container) return;
+    bgCanvas.width = fgCanvas.width = container.clientWidth;
+    bgCanvas.height = fgCanvas.height = container.clientHeight;
+}
+
+initApp();
