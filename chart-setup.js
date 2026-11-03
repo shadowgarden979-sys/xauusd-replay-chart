@@ -1,233 +1,137 @@
 // ==========================================
-// FILE: chart-setup.js
-// Deskripsi: Inisialisasi chart & Parser Data AoA (FINAL)
+// FILE: replay.js
+// Deskripsi: Logika Replay & Garis Gunting (FINAL)
 // ==========================================
 
-let isLoadingData = false;
-const loadingPromises = {}; 
+const scissorsLine = document.getElementById('scissors-line');
+const scissorsTime = document.getElementById('scissors-time');
+const btnSetReplay = document.getElementById('btn-set-replay');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStep = document.getElementById('btn-step');
+const btnToggleLine = document.getElementById('btn-toggle-line');
+const speedSelect = document.getElementById('speed-select');
 
-// Fungsi pembantu untuk mengecek variabel global const dengan aman
-function getGlobalConst(varName) {
-    try {
-        return new Function('return typeof ' + varName + ' !== "undefined" ? ' + varName + ' : null')();
-    } catch (e) {
-        return null;
-    }
-}
-
-async function parseAoAAsync(aoaArray, progressCallback) {
-    if (!Array.isArray(aoaArray)) return [];
-    const result = [];
-    const total = aoaArray.length;
-    const chunkSize = 5000; 
-    
-    for (let i = 0; i < total; i += chunkSize) {
-        const chunk = aoaArray.slice(i, i + chunkSize);
-        for (let j = 0; j < chunk.length; j++) {
-            const item = chunk[j];
-            result.push({
-                time: Math.floor(item[0] / 1000),
-                open: item[1], high: item[2], low: item[3], close: item[4]
-            });
+function updateScissorsPosition() {
+    if (!chart || !isReplayMode || !isLineVisible || isPlaying) return;
+    let idx = Math.max(0, currentReplayIndex - 1);
+    if (fullData[idx]) {
+        const x = getX(fullData[idx].time);
+        if (x !== null) {
+            scissorsLine.style.left = x + 'px';
+            let t = fullData[idx].time;
+            let date = new Date(t * 1000);
+            let str = `${date.getUTCFullYear()}-${(date.getUTCMonth()+1).toString().padStart(2,'0')}-${date.getUTCDate().toString().padStart(2,'0')} ${date.getUTCHours().toString().padStart(2,'0')}:${date.getUTCMinutes().toString().padStart(2,'0')}`;
+            scissorsTime.innerText = str;
         }
-        await new Promise(r => setTimeout(r, 0));
-        if (progressCallback) progressCallback(Math.min(100, Math.round(((i + chunkSize) / total) * 100)));
-    }
-    return result;
-}
-
-function loadDataScript(tf, year) {
-    const varName = `data_${tf}_${year}`;
-    
-    // Cek menggunakan getGlobalConst, bukan window[varName]
-    const existingData = getGlobalConst(varName);
-    if (existingData) {
-        return Promise.resolve(existingData);
-    }
-    
-    if (loadingPromises[varName]) {
-        return loadingPromises[varName];
-    }
-
-    loadingPromises[varName] = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = `${varName}.js`;
-        
-        script.onload = () => {
-            let attempts = 0;
-            const checkInterval = setInterval(() => {
-                attempts++;
-                const data = getGlobalConst(varName);
-                
-                if (data) {
-                    clearInterval(checkInterval);
-                    resolve(data);
-                } else if (attempts > 30) { // Maksimal tunggu 3 detik
-                    clearInterval(checkInterval);
-                    delete loadingPromises[varName];
-                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan di dalam file.`));
-                }
-            }, 100);
-        };
-        
-        script.onerror = () => {
-            delete loadingPromises[varName];
-            reject(new Error(`Gagal mengunduh file ${varName}.js. Pastikan file ada di GitHub.`));
-        };
-        
-        document.head.appendChild(script);
-    });
-
-    return loadingPromises[varName];
-}
-
-async function loadTFData(newTF) {
-    if (isLoadingData) return; 
-    
-    if (allData[newTF] && allData[newTF].length > 0) {
-        fullData = allData[newTF];
-        applyTFChange(newTF);
-        document.getElementById('btn-tf').innerText = newTF + ' ▼';
-        return;
-    }
-
-    const overlay = document.getElementById('loading-overlay');
-    const bar = document.getElementById('loading-bar');
-    const text = document.getElementById('loading-text');
-    const btnTF = document.getElementById('btn-tf');
-    const originalText = btnTF.innerText;
-
-    isLoadingData = true;
-    overlay.style.display = 'flex';
-    bar.style.width = '0%';
-    text.innerText = `Memuat ${newTF}...`;
-
-    try {
-        const rawData = await loadDataScript(newTF, 2012);
-        
-        allData[newTF] = await parseAoAAsync(rawData, (pct) => {
-            bar.style.width = pct + '%';
-            text.innerText = `Memuat ${newTF}... ${pct}%`;
-        });
-        
-        fullData = allData[newTF];
-        applyTFChange(newTF);
-        btnTF.innerText = newTF + ' ▼'; 
-        
-    } catch (err) {
-        alert(err.message);
-        btnTF.innerText = originalText; 
-    } finally {
-        overlay.style.display = 'none';
-        isLoadingData = false;
     }
 }
 
-function applyTFChange(newTF) {
-    let currentReplayTime = null;
-    if (isReplayMode && fullData.length > 0) {
-        let idx = Math.max(0, currentReplayIndex - 1);
-        currentReplayTime = fullData[idx] ? fullData[idx].time : null;
-    }
-
-    currentTF = newTF;
+function updateScissorsVisibility() {
+    // PERBAIKAN: Menyembunyikan garis gunting jika berada di mode simulasi
+    let isSimulation = (typeof currentMode !== 'undefined' && currentMode === 'simulation');
     
-    if (isReplayMode && currentReplayTime !== null) {
-        let newIdx = 0;
-        let left = 0, right = fullData.length - 1;
-        while (left <= right) {
-            let mid = Math.floor((left + right) / 2);
-            if (fullData[mid].time >= currentReplayTime) {
-                newIdx = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
-        }
+    if (!isReplayMode || isPlaying || !isLineVisible || isSimulation) {
+        scissorsLine.style.display = 'none';
+    } else {
+        scissorsLine.style.display = 'block';
+    }
+}
+
+function pauseReplay() {
+    isPlaying = false;
+    clearInterval(playInterval);
+    updateScissorsVisibility();
+}
+
+let isDraggingScissors = false;
+
+scissorsLine.addEventListener('touchstart', (e) => {
+    isDraggingScissors = true;
+    e.preventDefault(); e.stopPropagation();
+    if (chart) chart.applyOptions({ handleScroll: false, handleScale: false }); 
+}, { passive: false });
+
+window.addEventListener('touchmove', (e) => {
+    if (!isDraggingScissors || !chart) return;
+    e.preventDefault(); e.stopPropagation();
+    
+    const rect = container.getBoundingClientRect();
+    const clientX = e.touches[0].clientX;
+    const x = clientX - rect.left;
+    
+    let newIdx = Math.round(chart.timeScale().coordinateToLogical(x));
+    if (newIdx === null) return;
+    
+    // Batas mundur menjadi 0 (candle pertama)
+    newIdx = Math.max(0, Math.min(newIdx, fullData.length - 1));
+    
+    if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
         series.setData(fullData.slice(0, currentReplayIndex));
-    } else if (isReplayMode && currentReplayTime === null) {
-        currentReplayIndex = Math.max(0, fullData.length - 100);
+    }
+}, { passive: false });
+
+window.addEventListener('touchend', () => {
+    if (isDraggingScissors) {
+        isDraggingScissors = false;
+        if (chart) chart.applyOptions({ handleScroll: true, handleScale: true }); 
+    }
+});
+
+btnSetReplay.onclick = () => {
+    isReplayMode = !isReplayMode;
+    if (isReplayMode) {
+        btnSetReplay.style.background = '#ef5350';
+        isLineVisible = true;
+        btnToggleLine.innerText = "Hide Line";
+        currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
+        if (chart) chart.timeScale().scrollToPosition(5, false);
     } else {
-        currentReplayIndex = fullData.length - 1;
+        btnSetReplay.style.background = '#26a69a';
+        pauseReplay();
+        currentReplayIndex = fullData.length;
         series.setData(fullData);
     }
+    updateScissorsVisibility();
+};
 
-    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
-    if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
+btnPlay.onclick = () => {
+    if (!isReplayMode) { alert("Aktifkan Set Replay dulu!"); return; }
+    if (isPlaying) return;
+    isPlaying = true;
+    updateScissorsVisibility(); 
     
-    chart.timeScale().fitContent();
-}
+    playInterval = setInterval(() => {
+        if (currentReplayIndex < fullData.length) {
+            currentReplayIndex++;
+            series.update(fullData[currentReplayIndex - 1]); 
+            if (currentReplayIndex >= fullData.length) pauseReplay();
+        } else {
+            pauseReplay();
+        }
+    }, replaySpeed);
+};
 
-async function initApp() {
-    const overlay = document.getElementById('loading-overlay');
-    const bar = document.getElementById('loading-bar');
-    const text = document.getElementById('loading-text');
+btnPause.onclick = pauseReplay;
 
-    // Pengecekan awal untuk data M5 menggunakan getGlobalConst
-    allRawData['M5'] = getGlobalConst('data_M5_2012') || [];
-    allRawData['M15'] = null;
-    allRawData['H1'] = null;
-    allRawData['H4'] = null;
-
-    if (typeof LightweightCharts === 'undefined') {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat.</h2>';
-        return;
+btnStep.onclick = () => {
+    if (!isReplayMode) { alert("Aktifkan Set Replay dulu!"); return; }
+    if (currentReplayIndex < fullData.length) {
+        currentReplayIndex++;
+        series.update(fullData[currentReplayIndex - 1]);
     }
-    if (allRawData['M5'].length === 0) {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: File data_M5_2012.js gagal dimuat atau kosong.</h2>';
-        return;
-    }
+};
 
-    allData['M5'] = await parseAoAAsync(allRawData['M5'], (pct) => {
-        bar.style.width = pct + '%';
-        text.innerText = pct + '%';
-    });
-    allData['M15'] = []; allData['H1'] = []; allData['H4'] = [];
-    fullData = allData['M5'];
+btnToggleLine.onclick = () => {
+    isLineVisible = !isLineVisible;
+    btnToggleLine.innerText = isLineVisible ? "Hide Line" : "Show Line";
+    updateScissorsVisibility();
+};
 
-    container = document.getElementById('chart-container');
-    chart = LightweightCharts.createChart(container, {
-        width: container.clientWidth, height: container.clientHeight,
-        layout: { background: { color: 'transparent' }, textColor: '#d1d4dc' },
-        grid: { vertLines: { color: '#2B2B43' }, horzLines: { color: '#2B2B43' } },
-        timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b', rightOffset: 10, barSpacing: 8 },
-        rightPriceScale: { autoScale: false, borderColor: '#485c7b' },
-        handleScroll: { horzTouchDrag: true, vertTouchDrag: true },
-        handleScale: { axisPressedMouseMove: { time: true, price: true }, pinch: true },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Hidden }
-    });
+speedSelect.onchange = (e) => { replaySpeed = parseInt(e.target.value); };
 
-    series = chart.addCandlestickSeries({
-        upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-    });
-
-    let initialReplayIndex = Math.max(0, fullData.length - 100);
-    currentReplayIndex = initialReplayIndex;
-    series.setData(fullData.slice(0, initialReplayIndex));
-    chart.timeScale().setVisibleLogicalRange({ from: initialReplayIndex - 50, to: initialReplayIndex + 10 });
-
-    bgCanvas = document.getElementById('bg-canvas');
-    bgCtx = bgCanvas.getContext('2d');
-    fgCanvas = document.getElementById('fg-canvas');
-    fgCtx = fgCanvas.getContext('2d');
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    setTimeout(() => {
-        overlay.style.display = 'none';
-        if (typeof window.initDrawingEvents === 'function') window.initDrawingEvents();
-        if (typeof render === 'function') render();
-    }, 500);
+if (chart) {
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => { updateScissorsPosition(); });
 }
-
-function resizeCanvas() {
-    if (!container) return;
-    bgCanvas.width = fgCanvas.width = container.clientWidth;
-    bgCanvas.height = fgCanvas.height = container.clientHeight;
-}
-
-initApp();
