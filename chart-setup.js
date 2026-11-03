@@ -123,3 +123,83 @@ function resizeCanvas() {
 
 // Jalankan Aplikasi
 initApp();
+
+// ==========================================
+// FUNGSI BARU: Ganti TF Dinamis & Load Data
+// ==========================================
+
+async function loadTFData(newTF) {
+    const overlay = document.getElementById('loading-overlay');
+    const bar = document.getElementById('loading-bar');
+    const text = document.getElementById('loading-text');
+    
+    // Jika data sudah ada di memori, langsung pakai
+    if (allData[newTF] && allData[newTF].length > 0) {
+        fullData = allData[newTF];
+        applyTFChange(newTF);
+        return;
+    }
+
+    // Tampilkan loading
+    overlay.style.display = 'flex';
+    bar.style.width = '0%';
+    text.innerText = 'Memuat ' + newTF + '...';
+
+    try {
+        // Panggil file dinamis (asumsi tahun 2012 untuk saat ini)
+        const rawData = await loadDataScript(newTF, 2012);
+        
+        // Parsing data
+        allData[newTF] = await parseAoAAsync(rawData, (pct) => {
+            bar.style.width = pct + '%';
+            text.innerText = pct + '%';
+        });
+        
+        fullData = allData[newTF];
+        applyTFChange(newTF);
+        
+    } catch (err) {
+        alert(err.message);
+        // Kembalikan tombol TF ke TF sebelumnya jika gagal
+        document.getElementById('btn-tf').innerText = currentTF + ' ▼';
+    } finally {
+        overlay.style.display = 'none';
+    }
+}
+
+function applyTFChange(newTF) {
+    let currentReplayTime = null;
+    if (isReplayMode && fullData.length > 0) {
+        let idx = Math.max(0, currentReplayIndex - 1);
+        currentReplayTime = fullData[idx] ? fullData[idx].time : null;
+    }
+
+    currentTF = newTF;
+    
+    if (isReplayMode && currentReplayTime !== null) {
+        let newIdx = 0;
+        let left = 0, right = fullData.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (fullData[mid].time >= currentReplayTime) {
+                newIdx = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
+            }
+        }
+        currentReplayIndex = newIdx;
+        series.setData(fullData.slice(0, currentReplayIndex));
+    } else if (isReplayMode && currentReplayTime === null) {
+        currentReplayIndex = Math.max(0, fullData.length - 100);
+        series.setData(fullData.slice(0, currentReplayIndex));
+    } else {
+        currentReplayIndex = fullData.length - 1;
+        series.setData(fullData);
+    }
+
+    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+    if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
+    
+    chart.timeScale().fitContent();
+}
