@@ -1,6 +1,6 @@
 // ==========================================
 // FILE: ui.js
-// Deskripsi: Logika UI, Tombol, Dropdown, & Modal
+// Deskripsi: Logika UI, Tombol, Dropdown, & Modal (FINAL)
 // ==========================================
 
 // --- Dropdown Timeframe ---
@@ -19,8 +19,8 @@ tfDropdown.querySelectorAll('div').forEach(el => {
         const newTF = el.getAttribute('data-tf');
         tfDropdown.style.display = 'none';
         
-        if (newTF && newTF !== currentTF) {
-            document.getElementById('btn-tf').innerText = newTF + ' ▼';
+        // Cegah klik jika sedang loading atau TF sama
+        if (newTF && newTF !== currentTF && !isLoadingData) {
             if (typeof loadTFData === 'function') {
                 await loadTFData(newTF);
             }
@@ -52,11 +52,14 @@ if (modeDropdown) {
                 if (typeof currentMode !== 'undefined' && currentMode !== 'simulation') {
                     alert("Masuk ke Mode Simulasi terlebih dahulu untuk melihat riwayat.");
                 } else {
-                    document.getElementById('hud-balance').innerText = '$' + (typeof simConfig !== 'undefined' ? simConfig.balance.toFixed(2) : '0.00');
-                    document.getElementById('hud-risk').innerText = (typeof simConfig !== 'undefined' ? simConfig.risk.toFixed(1) : '0.0');
+                    const balEl = document.getElementById('hud-balance');
+                    const riskEl = document.getElementById('hud-risk');
+                    if (balEl && typeof simConfig !== 'undefined') balEl.innerText = '$' + simConfig.balance.toFixed(2);
+                    if (riskEl && typeof simConfig !== 'undefined') riskEl.innerText = simConfig.risk.toFixed(1);
                     historyModal.style.display = 'flex';
                 }
             } else {
+                // Mode Backtest
                 if (typeof currentMode !== 'undefined') currentMode = 'backtest';
                 btnMode.innerText = 'MODE ▼';
                 btnMode.style.background = '#485c7b';
