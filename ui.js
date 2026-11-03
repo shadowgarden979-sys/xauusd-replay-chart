@@ -10,6 +10,8 @@ const btnTF = document.getElementById('btn-tf');
 btnTF.onclick = (e) => {
     e.stopPropagation();
     tfDropdown.style.display = tfDropdown.style.display === 'flex' ? 'none' : 'flex';
+    const modeDd = document.getElementById('mode-dropdown');
+    if (modeDd) modeDd.style.display = 'none';
 };
 
 tfDropdown.querySelectorAll('div').forEach(el => {
@@ -19,7 +21,6 @@ tfDropdown.querySelectorAll('div').forEach(el => {
         
         if (newTF && newTF !== currentTF) {
             document.getElementById('btn-tf').innerText = newTF + ' ▼';
-            // Panggil fungsi load dinamis dari chart-setup.js
             if (typeof loadTFData === 'function') {
                 await loadTFData(newTF);
             }
@@ -27,9 +28,93 @@ tfDropdown.querySelectorAll('div').forEach(el => {
     };
 });
 
-document.addEventListener('click', () => { tfDropdown.style.display = 'none'; });
+// --- Dropdown Mode & Modal Setup ---
+const modeDropdown = document.getElementById('mode-dropdown');
+const btnMode = document.getElementById('btn-mode');
+const setupModal = document.getElementById('setup-modal-overlay');
+const historyModal = document.getElementById('history-modal-overlay');
 
-// --- Floating Menu & Modal ---
+if (btnMode) {
+    btnMode.onclick = (e) => {
+        e.stopPropagation();
+        modeDropdown.style.display = modeDropdown.style.display === 'flex' ? 'none' : 'flex';
+        tfDropdown.style.display = 'none';
+    };
+}
+
+if (modeDropdown) {
+    modeDropdown.querySelectorAll('div').forEach(el => {
+        el.onclick = (e) => {
+            const mode = el.getAttribute('data-mode');
+            if (mode === 'simulation') {
+                setupModal.style.display = 'flex';
+            } else if (mode === 'history') {
+                if (typeof currentMode !== 'undefined' && currentMode !== 'simulation') {
+                    alert("Masuk ke Mode Simulasi terlebih dahulu untuk melihat riwayat.");
+                } else {
+                    document.getElementById('hud-balance').innerText = '$' + (typeof simConfig !== 'undefined' ? simConfig.balance.toFixed(2) : '0.00');
+                    document.getElementById('hud-risk').innerText = (typeof simConfig !== 'undefined' ? simConfig.risk.toFixed(1) : '0.0');
+                    historyModal.style.display = 'flex';
+                }
+            } else {
+                if (typeof currentMode !== 'undefined') currentMode = 'backtest';
+                btnMode.innerText = 'MODE ▼';
+                btnMode.style.background = '#485c7b';
+            }
+            modeDropdown.style.display = 'none';
+        };
+    });
+}
+
+if (document.getElementById('btn-close-setup')) {
+    document.getElementById('btn-close-setup').onclick = () => { setupModal.style.display = 'none'; };
+}
+if (document.getElementById('btn-close-history')) {
+    document.getElementById('btn-close-history').onclick = () => { historyModal.style.display = 'none'; };
+}
+
+if (document.getElementById('btn-start-sim')) {
+    document.getElementById('btn-start-sim').onclick = () => {
+        let startDate = document.getElementById('sim-start-date').value;
+        let endDate = document.getElementById('sim-end-date').value;
+        let bal = parseFloat(document.getElementById('sim-balance').value);
+        let risk = parseFloat(document.getElementById('sim-risk').value);
+
+        if (!startDate || !endDate || isNaN(bal) || isNaN(risk)) {
+            alert("Harap isi semua data dengan benar!");
+            return;
+        }
+        
+        if (new Date(startDate) >= new Date(endDate)) {
+            alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
+            return;
+        }
+
+        // Hapus objek posisi lama agar layar bersih
+        drawings = drawings.filter(d => !d.type.startsWith('position'));
+        selectedDrawing = null;
+        if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+
+        if (typeof simConfig !== 'undefined') {
+            simConfig = { balance: bal, risk: risk, startDate: startDate, endDate: endDate };
+        }
+        if (typeof currentMode !== 'undefined') currentMode = 'simulation';
+        
+        btnMode.innerText = 'SIMULASI ▼';
+        btnMode.style.background = '#26a69a';
+        setupModal.style.display = 'none';
+        
+        if (typeof startSimulation === 'function') startSimulation();
+    };
+}
+
+// Sembunyikan dropdown jika klik di luar
+document.addEventListener('click', () => { 
+    tfDropdown.style.display = 'none'; 
+    if (modeDropdown) modeDropdown.style.display = 'none';
+});
+
+// --- Floating Menu & Modal Kustomisasi ---
 const floatingMenu = document.getElementById('floating-menu');
 const btnSnap = document.getElementById('f-btn-snap');
 const btnCostum = document.getElementById('f-btn-costum');
