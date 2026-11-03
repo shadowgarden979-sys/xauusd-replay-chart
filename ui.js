@@ -19,7 +19,6 @@ tfDropdown.querySelectorAll('div').forEach(el => {
         const newTF = el.getAttribute('data-tf');
         tfDropdown.style.display = 'none';
         
-        // Cegah klik jika sedang loading atau TF sama
         if (newTF && newTF !== currentTF && !isLoadingData) {
             if (typeof loadTFData === 'function') {
                 await loadTFData(newTF);
@@ -63,6 +62,7 @@ if (modeDropdown) {
                 if (typeof currentMode !== 'undefined') currentMode = 'backtest';
                 btnMode.innerText = 'MODE ▼';
                 btnMode.style.background = '#485c7b';
+                if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
             }
             modeDropdown.style.display = 'none';
         };
@@ -76,21 +76,67 @@ if (document.getElementById('btn-close-history')) {
     document.getElementById('btn-close-history').onclick = () => { historyModal.style.display = 'none'; };
 }
 
+// --- LOGIKA TIME JUMP & HISTORICAL CONTEXT ---
 if (document.getElementById('btn-start-sim')) {
     document.getElementById('btn-start-sim').onclick = () => {
-        let startDate = document.getElementById('sim-start-date').value;
-        let endDate = document.getElementById('sim-end-date').value;
+        let startDateStr = document.getElementById('sim-start-date').value;
+        let endDateStr = document.getElementById('sim-end-date').value;
         let bal = parseFloat(document.getElementById('sim-balance').value);
         let risk = parseFloat(document.getElementById('sim-risk').value);
 
-        if (!startDate || !endDate || isNaN(bal) || isNaN(risk)) {
+        if (!startDateStr || !endDateStr || isNaN(bal) || isNaN(risk)) {
             alert("Harap isi semua data dengan benar!");
             return;
         }
         
-        if (new Date(startDate) >= new Date(endDate)) {
+        let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
+        let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
+        let lookbackTs = startTs - (30 * 24 * 60 * 60); // 30 hari ke belakang
+
+        if (startTs >= endTs) {
             alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
             return;
+        }
+
+        // Cari Index Start, End, dan Lookback menggunakan Binary Search
+        let startIdx = -1, endIdx = -1, lookbackIdx = 0;
+        
+        // Cari Start Index
+        let left = 0, right = fullData.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (fullData[mid].time >= startTs) {
+                startIdx = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
+            }
+        }
+        if (startIdx === -1) startIdx = fullData.length - 1; // Jika start melewati data terakhir
+
+        // Cari End Index
+        left = 0; right = fullData.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (fullData[mid].time <= endTs) {
+                endIdx = mid;
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        if (endIdx === -1) endIdx = fullData.length - 1;
+
+        // Cari Lookback Index (1 bulan sebelum start)
+        left = 0; right = startIdx;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (fullData[mid].time >= lookbackTs) {
+                lookbackIdx = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
+            }
         }
 
         // Hapus objek posisi lama agar layar bersih
@@ -99,14 +145,30 @@ if (document.getElementById('btn-start-sim')) {
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
         if (typeof simConfig !== 'undefined') {
-            simConfig = { balance: bal, risk: risk, startDate: startDate, endDate: endDate };
+            simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endIdx: endIdx };
         }
         if (typeof currentMode !== 'undefined') currentMode = 'simulation';
         
         btnMode.innerText = 'SIMULASI ▼';
         btnMode.style.background = '#26a69a';
         setupModal.style.display = 'none';
+
+        // --- EKSEKUSI TIME JUMP ---
+        if (typeof isReplayMode !== 'undefined') isReplayMode = true;
+        if (typeof isPlaying !== 'undefined') isPlaying = false;
         
+        const btnSetReplay = document.getElementById('btn-set-replay');
+        if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
+
+        currentReplayIndex = startIdx;
+        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        
+        // Zoom ke area lookback
+        if (chart) {
+            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: startIdx + 20 });
+        }
+
+        if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
         if (typeof startSimulation === 'function') startSimulation();
     };
 }
