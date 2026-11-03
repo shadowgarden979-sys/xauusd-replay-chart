@@ -1,12 +1,20 @@
 // ==========================================
 // FILE: chart-setup.js
-// Deskripsi: Inisialisasi chart & Parser Data AoA
+// Deskripsi: Inisialisasi chart & Parser Data AoA (FINAL)
 // ==========================================
 
 let isLoadingData = false;
-const loadingPromises = {}; // Cache untuk mencegah duplikasi script
+const loadingPromises = {}; 
 
-// 1. Parser Asinkron dengan Progress Callback
+// Fungsi pembantu untuk mengecek variabel global const dengan aman
+function getGlobalConst(varName) {
+    try {
+        return new Function('return typeof ' + varName + ' !== "undefined" ? ' + varName + ' : null')();
+    } catch (e) {
+        return null;
+    }
+}
+
 async function parseAoAAsync(aoaArray, progressCallback) {
     if (!Array.isArray(aoaArray)) return [];
     const result = [];
@@ -28,37 +36,36 @@ async function parseAoAAsync(aoaArray, progressCallback) {
     return result;
 }
 
-// 2. Loader Dinamis (Anti Duplikat & Anti Undefined)
 function loadDataScript(tf, year) {
     const varName = `data_${tf}_${year}`;
     
-    // Jika data sudah ada di memori
-    if (window[varName]) {
-        return Promise.resolve(window[varName]);
+    // Cek menggunakan getGlobalConst, bukan window[varName]
+    const existingData = getGlobalConst(varName);
+    if (existingData) {
+        return Promise.resolve(existingData);
     }
     
-    // Jika proses unduh file ini sedang berjalan, kembalikan Promise yang sama
     if (loadingPromises[varName]) {
         return loadingPromises[varName];
     }
 
-    // Buat Promise baru untuk mengunduh
     loadingPromises[varName] = new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = `${varName}.js`;
         
         script.onload = () => {
-            // Polling: Pastikan variabel benar-benar sudah dieksekusi oleh browser
             let attempts = 0;
             const checkInterval = setInterval(() => {
                 attempts++;
-                if (window[varName]) {
+                const data = getGlobalConst(varName);
+                
+                if (data) {
                     clearInterval(checkInterval);
-                    resolve(window[varName]);
+                    resolve(data);
                 } else if (attempts > 30) { // Maksimal tunggu 3 detik
                     clearInterval(checkInterval);
                     delete loadingPromises[varName];
-                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan.`));
+                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan di dalam file.`));
                 }
             }, 100);
         };
@@ -74,7 +81,6 @@ function loadDataScript(tf, year) {
     return loadingPromises[varName];
 }
 
-// 3. Fungsi Ganti TF
 async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
@@ -154,19 +160,19 @@ function applyTFChange(newTF) {
     chart.timeScale().fitContent();
 }
 
-// 4. Inisialisasi Awal
 async function initApp() {
     const overlay = document.getElementById('loading-overlay');
     const bar = document.getElementById('loading-bar');
     const text = document.getElementById('loading-text');
 
-    allRawData['M5'] = typeof data_M5_2012 !== 'undefined' ? data_M5_2012 : [];
+    // Pengecekan awal untuk data M5 menggunakan getGlobalConst
+    allRawData['M5'] = getGlobalConst('data_M5_2012') || [];
     allRawData['M15'] = null;
     allRawData['H1'] = null;
     allRawData['H4'] = null;
 
     if (typeof LightweightCharts === 'undefined') {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat (CDN Diblokir).</h2>';
+        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat.</h2>';
         return;
     }
     if (allRawData['M5'].length === 0) {
