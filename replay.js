@@ -28,11 +28,13 @@ function updateScissorsPosition() {
 }
 
 function updateScissorsVisibility() {
-    if (!isReplayMode || isPlaying || !isLineVisible) {
+    // PERBAIKAN: Tambahkan kondisi currentMode === 'simulation' agar garis gunting disembunyikan
+    if (!isReplayMode || isPlaying || !isLineVisible || (typeof currentMode !== 'undefined' && currentMode === 'simulation')) {
         scissorsLine.style.display = 'none';
     } else {
         scissorsLine.style.display = 'block';
     }
+}
 }
 
 function pauseReplay() {
