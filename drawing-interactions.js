@@ -86,8 +86,12 @@ function handleStart(e) {
         const coords = getChartCoords(x, y);
         if (coords) {
             if (measureFrozen) {
-                measureFrozen = false; measureStart = null; measureEnd = null; setTool('pan');
-            } else {
+    measureFrozen = false; 
+    measureStart = null; 
+    measureEnd = null; 
+    setTool('pan'); // PERBAIKAN: Kembalikan ke mode pan agar tidak macet
+    return;
+} else {
                 isMeasuring = true; measureStart = coords; measureEnd = coords;
             }
         }
