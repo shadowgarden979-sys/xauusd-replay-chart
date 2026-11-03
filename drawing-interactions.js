@@ -268,10 +268,16 @@ function handleEnd() {
     currentMouseX = null; currentMouseY = null;
 }
 
-container.addEventListener('touchstart', handleStart, { passive: false });
-container.addEventListener('mousedown', handleStart);
-window.addEventListener('touchmove', handleMove, { passive: false });
-window.addEventListener('mousemove', handleMove);
-// PERBAIKAN MASALAH 5: Reset crosshair saat keluar area chart
-container.addEventListener('mouseleave', () => { currentMouseX = null; currentMouseY = null; });
-window.addEventListener('touchcancel', handleEnd);
+// PERBAIKAN: Bungkus event listener agar tidak error sebelum container diinisialisasi
+window.initDrawingEvents = function() {
+    container.addEventListener('touchstart', handleStart, { passive: false });
+    container.addEventListener('mousedown', handleStart);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('mouseup', handleEnd);
+
+    // Reset crosshair saat keluar area chart
+    container.addEventListener('mouseleave', () => { currentMouseX = null; currentMouseY = null; });
+    window.addEventListener('touchcancel', handleEnd);
+};
