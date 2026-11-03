@@ -101,10 +101,18 @@ async function initApp() {
     window.addEventListener('resize', resizeCanvas);
 
     // Sembunyikan Loading dan Jalankan Render Loop
-    setTimeout(() => {
-        overlay.style.display = 'none';
-        if (typeof render === 'function') render(); // Panggil render setelah semua siap
-    }, 500);
+setTimeout(() => {
+    overlay.style.display = 'none';
+    
+    // Panggil event listener setelah container & canvas 100% siap
+    if (typeof window.initDrawingEvents === 'function') {
+        window.initDrawingEvents();
+    }
+    
+    if (typeof render === 'function') {
+        render(); // Panggil render setelah semua siap
+    }
+}, 500);
 }
 
 function resizeCanvas() {
