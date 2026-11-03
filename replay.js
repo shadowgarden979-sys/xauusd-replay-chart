@@ -1,6 +1,6 @@
 // ==========================================
 // FILE: replay.js
-// Deskripsi: Logika Replay & Garis Gunting
+// Deskripsi: Logika Replay & Garis Gunting (FINAL)
 // ==========================================
 
 const scissorsLine = document.getElementById('scissors-line');
@@ -28,13 +28,14 @@ function updateScissorsPosition() {
 }
 
 function updateScissorsVisibility() {
-    // PERBAIKAN: Tambahkan kondisi currentMode === 'simulation' agar garis gunting disembunyikan
-    if (!isReplayMode || isPlaying || !isLineVisible || (typeof currentMode !== 'undefined' && currentMode === 'simulation')) {
+    // PERBAIKAN: Menyembunyikan garis gunting jika berada di mode simulasi
+    let isSimulation = (typeof currentMode !== 'undefined' && currentMode === 'simulation');
+    
+    if (!isReplayMode || isPlaying || !isLineVisible || isSimulation) {
         scissorsLine.style.display = 'none';
     } else {
         scissorsLine.style.display = 'block';
     }
-}
 }
 
 function pauseReplay() {
@@ -62,7 +63,7 @@ window.addEventListener('touchmove', (e) => {
     let newIdx = Math.round(chart.timeScale().coordinateToLogical(x));
     if (newIdx === null) return;
     
-    // PERBAIKAN MASALAH 3: Batas mundur menjadi 0 (candle pertama)
+    // Batas mundur menjadi 0 (candle pertama)
     newIdx = Math.max(0, Math.min(newIdx, fullData.length - 1));
     
     if (newIdx !== currentReplayIndex) {
