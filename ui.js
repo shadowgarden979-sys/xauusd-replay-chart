@@ -46,23 +46,28 @@ if (modeDropdown) {
         el.onclick = (e) => {
             const mode = el.getAttribute('data-mode');
             if (mode === 'simulation') {
-                setupModal.style.display = 'flex';
+                if (currentMode === 'simulation' && isSimulationRunning) {
+                    alert("Sesi simulasi sedang berjalan. Selesaikan sesi terlebih dahulu.");
+                } else {
+                    setupModal.style.display = 'flex';
+                }
             } else if (mode === 'history') {
                 if (typeof currentMode !== 'undefined' && currentMode !== 'simulation') {
                     alert("Masuk ke Mode Simulasi terlebih dahulu untuk melihat riwayat.");
                 } else {
-                    const balEl = document.getElementById('hud-balance');
-                    const riskEl = document.getElementById('hud-risk');
-                    if (balEl && typeof simConfig !== 'undefined') balEl.innerText = '$' + simConfig.balance.toFixed(2);
-                    if (riskEl && typeof simConfig !== 'undefined') riskEl.innerText = simConfig.risk.toFixed(1);
                     historyModal.style.display = 'flex';
+                    // Gambar dashboard setelah modal muncul agar ukuran canvas valid
+                    setTimeout(renderHistoryDashboard, 50); 
                 }
             } else {
-                // Mode Backtest
-                if (typeof currentMode !== 'undefined') currentMode = 'backtest';
-                btnMode.innerText = 'MODE ▼';
-                btnMode.style.background = '#485c7b';
-                if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+                if (currentMode === 'simulation' && isSimulationRunning) {
+                    alert("Tidak dapat keluar dari Mode Simulasi sebelum sesi selesai.");
+                } else {
+                    currentMode = 'backtest';
+                    btnMode.innerText = 'MODE ▼';
+                    btnMode.style.background = '#485c7b';
+                    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+                }
             }
             modeDropdown.style.display = 'none';
         };
@@ -91,17 +96,15 @@ if (document.getElementById('btn-start-sim')) {
         
         let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
         let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
-        let lookbackTs = startTs - (30 * 24 * 60 * 60); // 30 hari ke belakang
+        let lookbackTs = startTs - (30 * 24 * 60 * 60);
 
         if (startTs >= endTs) {
             alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
             return;
         }
 
-        // Cari Index Start, End, dan Lookback menggunakan Binary Search
         let startIdx = -1, endIdx = -1, lookbackIdx = 0;
         
-        // Cari Start Index
         let left = 0, right = fullData.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
@@ -112,9 +115,8 @@ if (document.getElementById('btn-start-sim')) {
                 left = mid + 1;
             }
         }
-        if (startIdx === -1) startIdx = fullData.length - 1; // Jika start melewati data terakhir
+        if (startIdx === -1) startIdx = fullData.length - 1;
 
-        // Cari End Index
         left = 0; right = fullData.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
@@ -127,7 +129,6 @@ if (document.getElementById('btn-start-sim')) {
         }
         if (endIdx === -1) endIdx = fullData.length - 1;
 
-        // Cari Lookback Index (1 bulan sebelum start)
         left = 0; right = startIdx;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
@@ -139,7 +140,6 @@ if (document.getElementById('btn-start-sim')) {
             }
         }
 
-        // Hapus objek posisi lama agar layar bersih
         drawings = drawings.filter(d => !d.type.startsWith('position'));
         selectedDrawing = null;
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
@@ -153,7 +153,6 @@ if (document.getElementById('btn-start-sim')) {
         btnMode.style.background = '#26a69a';
         setupModal.style.display = 'none';
 
-        // --- EKSEKUSI TIME JUMP ---
         if (typeof isReplayMode !== 'undefined') isReplayMode = true;
         if (typeof isPlaying !== 'undefined') isPlaying = false;
         
@@ -163,7 +162,6 @@ if (document.getElementById('btn-start-sim')) {
         currentReplayIndex = startIdx;
         series.setData(fullData.slice(0, currentReplayIndex + 1));
         
-        // Zoom ke area lookback
         if (chart) {
             chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: startIdx + 20 });
         }
@@ -178,6 +176,144 @@ document.addEventListener('click', () => {
     tfDropdown.style.display = 'none'; 
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
+
+// --- FUNGSI RENDER DASHBOARD HISTORY ---
+function renderHistoryDashboard() {
+    let totalPnl = simBalance - simConfig.balance;
+    let totalTrades = tradeHistory.length;
+    let wins = tradeHistory.filter(t => t.status === 'WIN').length;
+    let winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : 0;
+    
+    document.getElementById('dash-balance').innerText = '$' + simBalance.toFixed(2);
+    document.getElementById('dash-balance').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
+    
+    document.getElementById('dash-pnl').innerText = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+    document.getElementById('dash-pnl').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
+    
+    document.getElementById('dash-winrate').innerText = winRate + '%';
+    document.getElementById('dash-winrate').style.color = winRate >= 50 ? '#26a69a' : '#ef5350';
+
+    // Hitung Max Drawdown & Win Streak
+    let peak = simConfig.balance;
+    let maxDD = 0;
+    let currentStreak = 0;
+    let maxStreak = 0;
+    let currentBal = simConfig.balance;
+
+    tradeHistory.forEach(t => {
+        currentBal += t.pnl;
+        if (currentBal > peak) peak = currentBal;
+        let dd = ((peak - currentBal) / peak) * 100;
+        if (dd > maxDD) maxDD = dd;
+
+        if (t.pnl > 0) {
+            currentStreak += t.pnl;
+            if (currentStreak > maxStreak) maxStreak = currentStreak;
+        } else {
+            currentStreak = 0;
+        }
+    });
+
+    document.getElementById('dash-dd').innerText = '-' + maxDD.toFixed(1) + '%';
+    document.getElementById('dash-streak').innerText = '$' + maxStreak.toFixed(2);
+
+    // Hitung Rata-rata Trade (D/M/Y)
+    if (totalTrades > 0) {
+        let startD = new Date(simConfig.startDate);
+        let endD = new Date(simConfig.endDate);
+        let diffTime = Math.abs(endD - startD);
+        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1; 
+        let diffMonths = (endD.getFullYear() - startD.getFullYear()) * 12 + (endD.getMonth() - startD.getMonth()) + 1;
+        let diffYears = (endD.getFullYear() - startD.getFullYear()) + 1;
+
+        let avgD = (totalTrades / diffDays).toFixed(1);
+        let avgM = (totalTrades / diffMonths).toFixed(1);
+        let avgY = (totalTrades / diffYears).toFixed(1);
+
+        document.getElementById('dash-avg').innerText = `${avgD} / ${avgM} / ${avgY}`;
+    } else {
+        document.getElementById('dash-avg').innerText = `0 / 0 / 0`;
+    }
+
+    // Render Tabel
+    let tbody = document.getElementById('history-table-body');
+    tbody.innerHTML = '';
+    
+    // Urutkan dari terbaru ke terlama
+    let sortedHistory = [...tradeHistory].reverse();
+
+    sortedHistory.forEach(t => {
+        let entryD = new Date(t.entryTime * 1000);
+        let exitD = new Date(t.exitTime * 1000);
+        
+        let timeStr = `${entryD.getUTCHours().toString().padStart(2,'0')}:${entryD.getUTCMinutes().toString().padStart(2,'0')} - ${exitD.getUTCHours().toString().padStart(2,'0')}:${exitD.getUTCMinutes().toString().padStart(2,'0')} <br> <span style="font-size:9px; color:#888;">${entryD.getUTCDate()}/${entryD.getUTCMonth()+1}/${entryD.getUTCFullYear()}</span>`;
+        let typeStr = t.type === 'position-long' ? 'LONG' : 'SHORT';
+        let pnlStr = (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2);
+        let pnlClass = t.pnl >= 0 ? 'win-text' : 'loss-text';
+
+        let tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${timeStr}</td>
+            <td style="color:${t.type === 'position-long' ? '#26a69a' : '#ef5350'}">${typeStr}</td>
+            <td>${t.entry.toFixed(2)}</td>
+            <td>${t.exit.toFixed(2)}</td>
+            <td class="${pnlClass}">${pnlStr}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // Gambar Equity Curve
+    let canvas = document.getElementById('equity-canvas');
+    let ctx = canvas.getContext('2d');
+    
+    // Pastikan ukuran canvas sesuai dengan container
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (tradeHistory.length > 0) {
+        let minBal = simConfig.balance;
+        let maxBal = simConfig.balance;
+        let balArr = [simConfig.balance];
+
+        let currentB = simConfig.balance;
+        tradeHistory.forEach(t => {
+            currentB += t.pnl;
+            balArr.push(currentB);
+            if (currentB < minBal) minBal = currentB;
+            if (currentB > maxBal) maxBal = currentB;
+        });
+
+        // Beri padding
+        let padding = (maxBal - minBal) * 0.1 || 1;
+        minBal -= padding;
+        maxBal += padding;
+
+        let xStep = canvas.width / (balArr.length - 1 || 1);
+        
+        ctx.beginPath();
+        ctx.strokeStyle = '#2962FF';
+        ctx.lineWidth = 2;
+        
+        balArr.forEach((val, i) => {
+            let x = i * xStep;
+            let y = canvas.height - ((val - minBal) / (maxBal - minBal) * canvas.height);
+            
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Gambar titik terakhir
+        let lastX = (balArr.length - 1) * xStep;
+        let lastY = canvas.height - ((balArr[balArr.length-1] - minBal) / (maxBal - minBal) * canvas.height);
+        ctx.fillStyle = '#2962FF';
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
 
 // --- Floating Menu & Modal Kustomisasi ---
 const floatingMenu = document.getElementById('floating-menu');
