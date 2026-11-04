@@ -28,15 +28,16 @@ function checkTradeHits() {
 
         // 1. Cek Pending Order
         if (d.status === 'pending') {
-            // Cek apakah candle baru menyentuh harga Entry
+            // Cek apakah candle BARU menyentuh harga Entry
             if (c.low <= d.start.price && c.high >= d.start.price) {
                 d.status = 'active';
-                d.entryTime = c.time;
+                d.entryTime = c.time; // KUNCI: Simpan waktu candle yang mengeksekusi
+                d.entryIdx = lastCandleIdx;
                 
                 // Hitung Dynamic Lot (Value per Point)
                 let riskAmount = simBalance * (simRiskPercent / 100);
                 let distance = Math.abs(d.start.price - d.sl);
-                if (distance === 0) distance = 0.01; // Mencegah pembagian nol
+                if (distance === 0) distance = 0.01; 
                 
                 d.valuePerPoint = riskAmount / distance;
                 d.initialSL = d.sl; // Kunci SL awal
@@ -51,33 +52,21 @@ function checkTradeHits() {
             let isWin = false;
 
             if (isLong) {
-                // Slippage handling: Jika open candle sudah gap melewati SL/TP
-                if (c.open <= d.sl) {
-                    hitExit = true; exitPrice = c.open; isWin = false;
-                } else if (c.open >= d.tp) {
-                    hitExit = true; exitPrice = c.open; isWin = true;
-                } else if (c.low <= d.sl) {
-                    hitExit = true; exitPrice = d.sl; isWin = false;
-                } else if (c.high >= d.tp) {
-                    hitExit = true; exitPrice = d.tp; isWin = true;
-                }
+                if (c.open <= d.sl) { hitExit = true; exitPrice = c.open; isWin = false; }
+                else if (c.open >= d.tp) { hitExit = true; exitPrice = c.open; isWin = true; }
+                else if (c.low <= d.sl) { hitExit = true; exitPrice = d.sl; isWin = false; }
+                else if (c.high >= d.tp) { hitExit = true; exitPrice = d.tp; isWin = true; }
             } else {
-                if (c.open >= d.sl) {
-                    hitExit = true; exitPrice = c.open; isWin = false;
-                } else if (c.open <= d.tp) {
-                    hitExit = true; exitPrice = c.open; isWin = true;
-                } else if (c.high >= d.sl) {
-                    hitExit = true; exitPrice = d.sl; isWin = false;
-                } else if (c.low <= d.tp) {
-                    hitExit = true; exitPrice = d.tp; isWin = true;
-                }
+                if (c.open >= d.sl) { hitExit = true; exitPrice = c.open; isWin = false; }
+                else if (c.open <= d.tp) { hitExit = true; exitPrice = c.open; isWin = true; }
+                else if (c.high >= d.sl) { hitExit = true; exitPrice = d.sl; isWin = false; }
+                else if (c.low <= d.tp) { hitExit = true; exitPrice = d.tp; isWin = true; }
             }
 
             if (hitExit) {
                 closeTrade(d, exitPrice, isWin ? 'WIN' : 'LOSS');
                 updated = true;
             } else {
-                // Hitung Floating PnL
                 d.pnl = isLong ? (c.close - d.start.price) * d.valuePerPoint : (d.start.price - c.close) * d.valuePerPoint;
                 updated = true;
             }
@@ -110,7 +99,6 @@ function closeTrade(drawing, exitPrice, status) {
     });
 }
 
-// Fungsi untuk menutup paksa semua trade aktif (Akhir Sesi)
 function forceCloseAllTrades() {
     if (fullData.length === 0) return;
     let lastC = fullData[currentReplayIndex - 1] || fullData[fullData.length - 1];
