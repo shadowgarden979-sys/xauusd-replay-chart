@@ -83,12 +83,25 @@
             z-index: 100; display: none; justify-content: center; align-items: center;
         }
         #modal-content, #setup-modal-content, #history-modal-content {
-            background: #2B2B43; padding: 20px; border-radius: 8px; width: 80%; max-width: 300px;
+            background: #2B2B43; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px;
             color: white; display: flex; flex-direction: column; gap: 10px;
         }
         #modal-content label, #setup-modal-content label { font-size: 12px; color: #d1d4dc; }
         #modal-content input, #setup-modal-content input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        
+        /* CSS untuk Dashboard Riwayat */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 10px; }
+        .stats-grid div { background: #1e1e1e; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; }
+        .stats-grid span { font-weight: bold; color: #26a69a; display: block; font-size: 14px; }
+        #equity-canvas-container { width: 100%; height: 150px; background: #1e1e1e; border: 1px solid #485c7b; border-radius: 4px; position: relative; overflow: hidden;}
+        #equity-canvas { width: 100%; height: 100%; }
+        .table-container { max-height: 200px; overflow-y: auto; border: 1px solid #485c7b; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: center; }
+        th, td { padding: 6px; border-bottom: 1px solid #363A45; }
+        th { background: #1e1e1e; color: #d1d4dc; position: sticky; top: 0; }
+        .win-text { color: #26a69a; font-weight: bold; }
+        .loss-text { color: #ef5350; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -105,7 +118,6 @@
     <!-- UI TOOLBAR -->
     <div id="toolbar">
         <div class="toolbar-fixed-left">
-            <!-- Wrapper TF -->
             <div style="position: relative;">
                 <button id="btn-tf">M5 ▼</button>
                 <div id="tf-dropdown">
@@ -116,7 +128,6 @@
                 </div>
             </div>
 
-            <!-- Wrapper Mode -->
             <div style="position: relative;">
                 <button id="btn-mode" style="background:#485c7b;">MODE ▼</button>
                 <div id="mode-dropdown">
@@ -226,13 +237,44 @@
         </div>
     </div>
 
-    <!-- MODAL RIWAYAT TRADE -->
+    <!-- MODAL RIWAYAT TRADE (DASHBOARD BARU) -->
     <div id="history-modal-overlay">
-        <div id="history-modal-content">
-            <h3 style="margin:0;">Riwayat & Portofolio</h3>
-            <p>Modal Awal: <span id="hud-balance">$100.00</span></p>
-            <p>Risk: <span id="hud-risk">1.0</span>%</p>
-            <p style="color:#888; font-size:12px; text-align:center; margin-top:20px;">(Tabel Riwayat Trade akan diisi pada Tahap 3)</p>
+        <div id="history-modal-content" style="max-width: 450px; width: 95%;">
+            <h3 style="margin:0; text-align:center;">Dashboard Trading</h3>
+            
+            <!-- Panel Statistik -->
+            <div class="stats-grid">
+                <div>Saldo Saat Ini <span id="dash-balance">$100.00</span></div>
+                <div>Total PnL <span id="dash-pnl">$0.00</span></div>
+                <div>Win Rate <span id="dash-winrate">0%</span></div>
+                <div>Max Drawdown <span id="dash-dd" style="color:#ef5350;">0%</span></div>
+                <div>Max Win Streak <span id="dash-streak" style="color:#26a69a;">$0.00</span></div>
+                <div>Avg Trade (D/M/Y) <span id="dash-avg">0 / 0 / 0</span></div>
+            </div>
+
+            <!-- Equity Curve -->
+            <div id="equity-canvas-container">
+                <canvas id="equity-canvas"></canvas>
+            </div>
+
+            <!-- Tabel Riwayat -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Waktu (Chart)</th>
+                            <th>Tipe</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <!-- Diisi via JS -->
+                    </tbody>
+                </table>
+            </div>
+
             <div class="modal-btns">
                 <button class="btn" id="btn-close-history">Tutup</button>
             </div>
