@@ -39,7 +39,6 @@ async function parseAoAAsync(aoaArray, progressCallback) {
 function loadDataScript(tf, year) {
     const varName = `data_${tf}_${year}`;
     
-    // Cek menggunakan getGlobalConst, bukan window[varName]
     const existingData = getGlobalConst(varName);
     if (existingData) {
         return Promise.resolve(existingData);
@@ -62,7 +61,7 @@ function loadDataScript(tf, year) {
                 if (data) {
                     clearInterval(checkInterval);
                     resolve(data);
-                } else if (attempts > 30) { // Maksimal tunggu 3 detik
+                } else if (attempts > 30) { 
                     clearInterval(checkInterval);
                     delete loadingPromises[varName];
                     reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan di dalam file.`));
@@ -85,8 +84,15 @@ async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
     if (allData[newTF] && allData[newTF].length > 0) {
+        // PERBAIKAN BUG TF: Tangkap timestamp SEBELUM ganti data
+        let currentReplayTime = null;
+        if (isReplayMode && fullData.length > 0) {
+            let idx = Math.max(0, currentReplayIndex - 1);
+            currentReplayTime = fullData[idx] ? fullData[idx].time : null;
+        }
+
         fullData = allData[newTF];
-        applyTFChange(newTF);
+        applyTFChange(newTF, currentReplayTime);
         document.getElementById('btn-tf').innerText = newTF + ' ▼';
         return;
     }
@@ -110,8 +116,15 @@ async function loadTFData(newTF) {
             text.innerText = `Memuat ${newTF}... ${pct}%`;
         });
         
+        // PERBAIKAN BUG TF: Tangkap timestamp dari TF lama sebelum fullData ditimpa
+        let currentReplayTime = null;
+        if (isReplayMode && fullData.length > 0) {
+            let idx = Math.max(0, currentReplayIndex - 1);
+            currentReplayTime = fullData[idx] ? fullData[idx].time : null;
+        }
+
         fullData = allData[newTF];
-        applyTFChange(newTF);
+        applyTFChange(newTF, currentReplayTime);
         btnTF.innerText = newTF + ' ▼'; 
         
     } catch (err) {
@@ -123,16 +136,12 @@ async function loadTFData(newTF) {
     }
 }
 
-function applyTFChange(newTF) {
-    let currentReplayTime = null;
-    if (isReplayMode && fullData.length > 0) {
-        let idx = Math.max(0, currentReplayIndex - 1);
-        currentReplayTime = fullData[idx] ? fullData[idx].time : null;
-    }
-
+// PERBAIKAN BUG TF: Menerima parameter currentReplayTime dari TF lama
+function applyTFChange(newTF, currentReplayTime) {
     currentTF = newTF;
     
     if (isReplayMode && currentReplayTime !== null) {
+        // Binary Search berbasis Timestamp untuk mencari index yang tepat di TF baru
         let newIdx = 0;
         let left = 0, right = fullData.length - 1;
         while (left <= right) {
@@ -165,7 +174,6 @@ async function initApp() {
     const bar = document.getElementById('loading-bar');
     const text = document.getElementById('loading-text');
 
-    // Pengecekan awal untuk data M5 menggunakan getGlobalConst
     allRawData['M5'] = getGlobalConst('data_M5_2012') || [];
     allRawData['M15'] = null;
     allRawData['H1'] = null;
