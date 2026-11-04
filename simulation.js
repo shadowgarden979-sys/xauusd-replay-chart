@@ -8,7 +8,6 @@ function startSimulation() {
     simRiskPercent = simConfig.risk;
     tradeHistory = [];
     isSimulationRunning = true;
-    console.log("Simulasi dimulai. Saldo:", simBalance, "Risk:", simRiskPercent);
 }
 
 function checkTradeHits() {
@@ -26,7 +25,6 @@ function checkTradeHits() {
 
         let isLong = d.type === 'position-long';
 
-        // 1. Cek Pending Order
         if (d.status === 'pending') {
             if (c.low <= d.start.price && c.high >= d.start.price) {
                 d.status = 'active';
@@ -43,12 +41,9 @@ function checkTradeHits() {
             }
         }
 
-        // 2. Cek Active Trade (TP/SL & Auto-Extend)
         if (d.status === 'active') {
             let nextIdx = Math.min(currentReplayIndex, fullData.length - 1);
-            if (fullData[nextIdx]) {
-                d.end.time = fullData[nextIdx].time;
-            }
+            if (fullData[nextIdx]) d.end.time = fullData[nextIdx].time;
 
             let hitExit = false;
             let exitPrice = c.close;
@@ -76,9 +71,7 @@ function checkTradeHits() {
         }
     });
 
-    if (updated && typeof saveToLocalStorage === 'function') {
-        saveToLocalStorage();
-    }
+    if (updated && typeof saveToLocalStorage === 'function') saveToLocalStorage();
 }
 
 function closeTrade(drawing, exitPrice, status, exitTime) {
@@ -99,8 +92,8 @@ function closeTrade(drawing, exitPrice, status, exitTime) {
         exit: exitPrice,
         pnl: finalPnl,
         status: status,
-        entryTime: drawing.entryTime, // Waktu Chart
-        exitTime: exitTime            // Waktu Chart
+        entryTime: drawing.entryTime,
+        exitTime: exitTime
     });
 }
 
