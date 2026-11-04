@@ -28,25 +28,29 @@ function checkTradeHits() {
 
         // 1. Cek Pending Order
         if (d.status === 'pending') {
-            // Cek apakah candle BARU menyentuh harga Entry
             if (c.low <= d.start.price && c.high >= d.start.price) {
                 d.status = 'active';
-                d.entryTime = c.time; // KUNCI: Simpan waktu candle yang mengeksekusi
+                d.entryTime = c.time; 
                 d.entryIdx = lastCandleIdx;
                 
-                // Hitung Dynamic Lot (Value per Point)
                 let riskAmount = simBalance * (simRiskPercent / 100);
                 let distance = Math.abs(d.start.price - d.sl);
                 if (distance === 0) distance = 0.01; 
                 
                 d.valuePerPoint = riskAmount / distance;
-                d.initialSL = d.sl; // Kunci SL awal
+                d.initialSL = d.sl; 
                 updated = true;
             }
         }
 
-        // 2. Cek Active Trade (TP/SL)
+        // 2. Cek Active Trade (TP/SL & Auto-Extend)
         if (d.status === 'active') {
+            // AUTO-EXTEND: Paksa ujung kanan kotak memanjang ke candle terbaru + 1 celah
+            let nextIdx = Math.min(currentReplayIndex, fullData.length - 1);
+            if (fullData[nextIdx]) {
+                d.end.time = fullData[nextIdx].time;
+            }
+
             let hitExit = false;
             let exitPrice = c.close;
             let isWin = false;
@@ -64,7 +68,7 @@ function checkTradeHits() {
             }
 
             if (hitExit) {
-                closeTrade(d, exitPrice, isWin ? 'WIN' : 'LOSS');
+                closeTrade(d, exitPrice, isWin ? 'WIN' : 'LOSS', c.time);
                 updated = true;
             } else {
                 d.pnl = isLong ? (c.close - d.start.price) * d.valuePerPoint : (d.start.price - c.close) * d.valuePerPoint;
@@ -78,9 +82,10 @@ function checkTradeHits() {
     }
 }
 
-function closeTrade(drawing, exitPrice, status) {
+function closeTrade(drawing, exitPrice, status, exitTime) {
     drawing.status = 'closed';
     drawing.exitPrice = exitPrice;
+    drawing.exitTime = exitTime; // Simpan waktu persis candle keluar
     
     let isLong = drawing.type === 'position-long';
     let finalPnl = isLong ? (exitPrice - drawing.start.price) * drawing.valuePerPoint : (drawing.start.price - exitPrice) * drawing.valuePerPoint;
@@ -105,7 +110,7 @@ function forceCloseAllTrades() {
     
     drawings.forEach(d => {
         if (d.type.startsWith('position') && d.status === 'active') {
-            closeTrade(d, lastC.close, 'CLOSED (End)');
+            closeTrade(d, lastC.close, 'CLOSED (End)', lastC.time);
         }
     });
     isSimulationRunning = false;
