@@ -51,7 +51,7 @@ let container;
 
 // State Simulasi
 let currentMode = 'backtest';
-let simConfig = { balance: 100, risk: 1, startDate: null, endDate: null, endIdx: null };
+let simConfig = { balance: 100, risk: 1, startDate: null, endDate: null, endTime: null };
 let simBalance = 100;
 let simRiskPercent = 1;
 let tradeHistory = [];
