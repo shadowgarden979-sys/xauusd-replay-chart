@@ -19,14 +19,12 @@ function formatFullTime(timestamp) {
     return { dayName, dateStr, monthStr, yearStr, hh, mm };
 }
 
-// PERBAIKAN MASALAH 6: Mencegah update DOM berulang di 60fps
 let lastHudTime = -1; 
-
 function updateDateHUD() {
     let idx = isReplayMode ? Math.max(0, currentReplayIndex - 1) : fullData.length - 1;
     if (fullData[idx]) {
         let currentTime = fullData[idx].time;
-        if (currentTime !== lastHudTime) { // Hanya update jika waktunya benar-benar berubah
+        if (currentTime !== lastHudTime) { 
             lastHudTime = currentTime;
             let t = formatFullTime(currentTime);
             document.getElementById('date-hud').innerText = `${t.dayName}, ${t.dateStr} ${t.monthStr} ${t.yearStr} | ${t.hh}:${t.mm}`;
@@ -150,7 +148,6 @@ function calculateTradeLine(d) {
     let hitEntryIndex = null;
     for (let i = entryIndex; i <= maxIdx; i++) {
         let c = fullData[i];
-        // Toleransi desimal 0.05 untuk XAUUSD
         if (c.low <= d.start.price + 0.05 && c.high >= d.start.price - 0.05) { 
             hitEntryIndex = i; break; 
         }
@@ -186,8 +183,14 @@ function drawPositionBg(d) {
     if (x1 === null || x2 === null || yEntry === null || yTP === null || ySL === null) return;
 
     const isLong = d.type === 'position-long';
-    const baseOp = d.baseOpacity !== undefined ? d.baseOpacity : 0.1;
-    const activeOp = d.activeOpacity !== undefined ? d.activeOpacity : 0.4;
+    const isPending = d.status === 'pending';
+    const isClosed = d.status === 'closed';
+
+    let baseOp = d.baseOpacity !== undefined ? d.baseOpacity : 0.1;
+    let activeOp = d.activeOpacity !== undefined ? d.activeOpacity : 0.4;
+    
+    if (isClosed) { baseOp = 0.05; activeOp = 0.1; }
+    else if (isPending) { baseOp = 0.05; activeOp = 0.2; }
 
     bgCtx.fillStyle = `rgba(38, 166, 154, ${baseOp})`;
     bgCtx.beginPath(); bgCtx.rect(x1, yTP, x2 - x1, yEntry - yTP); bgCtx.fill();
@@ -195,44 +198,45 @@ function drawPositionBg(d) {
     bgCtx.fillStyle = `rgba(239, 83, 80, ${baseOp})`;
     bgCtx.beginPath(); bgCtx.rect(x1, yEntry, x2 - x1, ySL - yEntry); bgCtx.fill();
 
-    const tradeInfo = calculateTradeLine(d);
-    
-    if (tradeInfo) {
-        const xStart = getX(fullData[tradeInfo.startIdx].time);
-        const xExit = Math.min(getX(fullData[tradeInfo.endIdx].time), x2);
-        let yExit = getY(tradeInfo.endPrice);
-        
-        if (xExit > x2) {
-            const ratio = (x2 - x1) / (xExit - x1);
-            yExit = yEntry + (yExit - yEntry) * ratio;
+    // Visualisasi TP/SL kena (Hanya jika closed)
+    if (isClosed) {
+        // Draw simple marker
+        bgCtx.fillStyle = d.pnl >= 0 ? `rgba(38, 166, 154, 0.4)` : `rgba(239, 83, 80, 0.4)`;
+        let exitY = getY(d.exitPrice);
+        if (exitY !== null) {
+            bgCtx.beginPath(); bgCtx.arc(x2, exitY, 4, 0, Math.PI * 2); bgCtx.fill();
         }
-
-        // PERBAIKAN CLAMPING: Batasi garis agar tidak melewati TP/SL sebenarnya
-        if (isLong) {
-            yExit = Math.max(yTP, Math.min(ySL, yExit)); 
-        } else {
-            yExit = Math.max(ySL, Math.min(yTP, yExit));
-        }
-
-        // PERBAIKAN WARNA: Berdasarkan untung/rugi, bukan posisi Y semata
-        let isWin = isLong ? (yExit < yEntry) : (yExit > yEntry);
-        
-        if (Math.abs(yExit - yEntry) > 1) { // Jika ada pergerakan berarti
-            if (isWin) {
-                bgCtx.fillStyle = `rgba(38, 166, 154, ${activeOp})`; // Hijau (Profit)
-                bgCtx.beginPath(); 
-                bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); 
-                bgCtx.fill();
-            } else {
-                bgCtx.fillStyle = `rgba(239, 83, 80, ${activeOp})`; // Merah (Loss)
-                bgCtx.beginPath(); 
-                bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); 
-                bgCtx.fill();
+    } else {
+        // Visualisasi Berjalan (Live PnL)
+        const tradeInfo = calculateTradeLine(d);
+        if (tradeInfo) {
+            const xStart = getX(fullData[tradeInfo.startIdx].time);
+            const xExit = Math.min(getX(fullData[tradeInfo.endIdx].time), x2);
+            let yExit = getY(tradeInfo.endPrice);
+            
+            if (xExit > x2) {
+                const ratio = (x2 - x1) / (xExit - x1);
+                yExit = yEntry + (yExit - yEntry) * ratio;
             }
-        }
 
-        bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
-        bgCtx.beginPath(); bgCtx.moveTo(xStart, yEntry); bgCtx.lineTo(xExit, yExit); bgCtx.stroke();
+            if (isLong) yExit = Math.max(yTP, Math.min(ySL, yExit)); 
+            else yExit = Math.max(ySL, Math.min(yTP, yExit));
+
+            let isWin = isLong ? (yExit < yEntry) : (yExit > yEntry);
+            
+            if (Math.abs(yExit - yEntry) > 1) { 
+                if (isWin) {
+                    bgCtx.fillStyle = `rgba(38, 166, 154, ${activeOp})`; 
+                    bgCtx.beginPath(); bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); bgCtx.fill();
+                } else {
+                    bgCtx.fillStyle = `rgba(239, 83, 80, ${activeOp})`; 
+                    bgCtx.beginPath(); bgCtx.rect(xStart, Math.min(yEntry, yExit), xExit - xStart, Math.abs(yEntry - yExit)); bgCtx.fill();
+                }
+            }
+
+            bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+            bgCtx.beginPath(); bgCtx.moveTo(xStart, yEntry); bgCtx.lineTo(xExit, yExit); bgCtx.stroke();
+        }
     }
 
     bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
@@ -244,11 +248,26 @@ function drawPositionBg(d) {
     let rrText = risk > 0 ? (reward / risk).toFixed(2) : "0.00";
     
     fgCtx.font = 'bold 12px sans-serif';
-    fgCtx.fillStyle = '#FFD700';
+    fgCtx.fillStyle = isClosed ? '#888888' : '#FFD700';
     let xEntry = getX(d.start.time);
     
     fgCtx.textAlign = 'right'; fgCtx.textBaseline = 'middle';
     fgCtx.fillText(`R:R ${rrText}`, xEntry - 15, yEntry);
+
+    // TAMBAHAN OPSI C: Tampilkan Status & PnL di bawah R:R
+    fgCtx.font = '11px sans-serif';
+    if (isPending) {
+        fgCtx.fillStyle = '#d1d4dc';
+        fgCtx.fillText(`PENDING`, xEntry - 15, yEntry + 15);
+    } else if (d.status === 'active') {
+        fgCtx.fillStyle = d.pnl >= 0 ? '#26a69a' : '#ef5350';
+        let sign = d.pnl >= 0 ? '+' : '';
+        fgCtx.fillText(`PnL: ${sign}$${d.pnl.toFixed(2)}`, xEntry - 15, yEntry + 15);
+    } else if (isClosed) {
+        fgCtx.fillStyle = d.pnl >= 0 ? '#26a69a' : '#ef5350';
+        let sign = d.pnl >= 0 ? '+' : '';
+        fgCtx.fillText(`CLOSED: ${sign}$${d.pnl.toFixed(2)}`, xEntry - 15, yEntry + 15);
+    }
 }
 
 function drawShapeFg(d, isSelected) {
@@ -295,12 +314,15 @@ function drawShapeFg(d, isSelected) {
 }
 
 function drawHandlesFg(d) {
+    // Sembunyikan handle jika closed
+    if (d.status === 'closed') return;
+
     fgCtx.fillStyle = '#FFD700';
     if (d.type.startsWith('position')) {
         let x1 = getX(d.start.time); let yEntry = getY(d.start.price);
         let x2 = getX(d.end.time); let yTP = getY(d.tp); let ySL = getY(d.sl);
         
-        if (x1 !== null && yEntry !== null) {
+        if (x1 !== null && yEntry !== null && d.status === 'pending') {
             fgCtx.beginPath(); fgCtx.arc(x1, yEntry, 6, 0, Math.PI * 2); fgCtx.fill();
         }
         if (x2 !== null && yEntry !== null) {
@@ -313,7 +335,7 @@ function drawHandlesFg(d) {
             fgCtx.beginPath(); fgCtx.arc(x2, ySL, 6, 0, Math.PI * 2); fgCtx.fill();
         }
         
-        if (x1 !== null && x2 !== null) {
+        if (x1 !== null && x2 !== null && d.status === 'pending') {
             let cx = (x1 + x2) / 2; let cy = (yEntry + (yTP||yEntry) + (ySL||yEntry)) / 3;
             fgCtx.fillRect(cx - 5, cy - 5, 10, 10);
         }
