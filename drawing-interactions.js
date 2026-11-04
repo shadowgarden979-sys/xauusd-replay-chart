@@ -6,6 +6,10 @@
 function checkHandleHit(x, y) {
     if (!selectedDrawing) return null;
     const d = selectedDrawing;
+    
+    // Cegah interaksi handle jika sudah closed
+    if (d.status === 'closed') return null;
+
     if (d.type === 'circle') {
         const cx = getX(d.start.time); const cy = getY(d.start.price);
         const ex = getX(d.end.time); const ey = getY(d.end.price);
@@ -27,12 +31,17 @@ function checkHandleHit(x, y) {
             cx = (x1 + x2) / 2; cy = (y1 + y2) / 2;
         } else return null;
     }
-    if (cx !== null && cy !== null && Math.hypot(x - cx, y - cy) < 30) return 'center';
+    
+    // Handle center hanya aktif jika tidak active/closed
+    if (cx !== null && cy !== null && Math.hypot(x - cx, y - cy) < 30) {
+        if (d.status !== 'active') return 'center';
+    }
 
     if (d.type.startsWith('position')) {
         const x1 = getX(d.start.time); const yEntry = getY(d.start.price);
         const x2 = getX(d.end.time); const yTP = getY(d.tp); const ySL = getY(d.sl);
-        if (x1 !== null && yEntry !== null && Math.hypot(x - x1, y - yEntry) < 30) return 'entry';
+        // Handle Entry hanya aktif jika pending
+        if (d.status === 'pending' && x1 !== null && yEntry !== null && Math.hypot(x - x1, y - yEntry) < 30) return 'entry';
         if (x2 !== null && yTP !== null && Math.hypot(x - x2, y - yTP) < 30) return 'tp';
         if (x2 !== null && ySL !== null && Math.hypot(x - x2, y - ySL) < 30) return 'sl';
         if (x2 !== null && yEntry !== null && Math.hypot(x - x2, y - yEntry) < 30) return 'exit';
@@ -86,12 +95,8 @@ function handleStart(e) {
         const coords = getChartCoords(x, y);
         if (coords) {
             if (measureFrozen) {
-    measureFrozen = false; 
-    measureStart = null; 
-    measureEnd = null; 
-    setTool('pan'); // PERBAIKAN: Kembalikan ke mode pan agar tidak macet
-    return;
-} else {
+                measureFrozen = false; measureStart = null; measureEnd = null; setTool('pan');
+            } else {
                 isMeasuring = true; measureStart = coords; measureEnd = coords;
             }
         }
@@ -107,35 +112,33 @@ function handleStart(e) {
             const def = defaultSettings[currentTool] || {};
 
             if (currentTool === 'position-long' || currentTool === 'position-short') {
-            let isLong = currentTool === 'position-long';
-// PERBAIKAN MASALAH 7: Jarak dinamis 0.3% dari harga (menggantikan hardcode 5.00)
-let distance = coords.price * 0.003; 
-let tp = isLong ? coords.price + distance : coords.price - distance;
-let sl = isLong ? coords.price - distance : coords.price + distance;
-    
-    // PERBAIKAN: Hitung endTime mandiri tanpa bergantung pada index candle (mendukung area masa depan)
-    let tfSec = getTFSeconds(currentTF);
-    let endTime = coords.time + (tfSec * 20); // Default 20 candle ke depan
+                let isLong = currentTool === 'position-long';
+                let distance = coords.price * 0.003; 
+                let tp = isLong ? coords.price + distance : coords.price - distance;
+                let sl = isLong ? coords.price - distance : coords.price + distance;
+                
+                let tfSec = getTFSeconds(currentTF);
+                let endTime = coords.time + (tfSec * 20); 
 
-    let newPos = { 
-        type: currentTool, start: coords, end: { time: endTime, price: coords.price }, tp, sl,
-        baseOpacity: def.baseOpacity !== undefined ? def.baseOpacity : 0.1,
-        activeOpacity: def.activeOpacity !== undefined ? def.activeOpacity : 0.4
-    };
-    drawings.push(newPos); selectedDrawing = newPos;
-    setTool('pan'); saveToLocalStorage();
-} else if (currentTool === 'circle') {
-    // PERBAIKAN: Hitung endTime mandiri
-    let tfSec = getTFSeconds(currentTF);
-    let endTime = coords.time + (tfSec * 10); // Default 10 candle ke depan
+                let newPos = { 
+                    type: currentTool, start: coords, end: { time: endTime, price: coords.price }, tp, sl,
+                    baseOpacity: def.baseOpacity !== undefined ? def.baseOpacity : 0.1,
+                    activeOpacity: def.activeOpacity !== undefined ? def.activeOpacity : 0.4,
+                    status: 'pending', pnl: 0, valuePerPoint: 0, initialSL: sl
+                };
+                drawings.push(newPos); selectedDrawing = newPos;
+                setTool('pan'); saveToLocalStorage();
+            } else if (currentTool === 'circle') {
+                let tfSec = getTFSeconds(currentTF);
+                let endTime = coords.time + (tfSec * 10); 
 
-    let newCircle = { 
-        type: 'circle', start: coords, end: { time: endTime, price: coords.price + 5 },
-        color: def.color || '#2962FF'
-    };
-    drawings.push(newCircle); selectedDrawing = newCircle;
-    setTool('pan'); saveToLocalStorage();
-}else if (currentTool === 'text') {
+                let newCircle = { 
+                    type: 'circle', start: coords, end: { time: endTime, price: coords.price + 5 },
+                    color: def.color || '#2962FF'
+                };
+                drawings.push(newCircle); selectedDrawing = newCircle;
+                setTool('pan'); saveToLocalStorage();
+            } else if (currentTool === 'text') {
                 let text = prompt("Masukkan teks:", def.text || "Teks");
                 if (text) {
                     let newText = { type: 'text', start: coords, end: coords, text: text, color: def.color || '#d1d4dc' };
@@ -155,7 +158,7 @@ let sl = isLong ? coords.price - distance : coords.price + distance;
     }
 
     if (measureFrozen) {
-        measureFrozen = false; measureStart = null; measureEnd = null; return;
+        measureFrozen = false; measureStart = null; measureEnd = null; setTool('pan'); return;
     }
 
     const hitHandle = checkHandleHit(x, y);
@@ -196,7 +199,11 @@ function handleMove(e) {
         const coords = getChartCoords(x, y);
         if (!coords) return;
 
+        // Cegah drag jika status closed
+        if (selectedDrawing.status === 'closed') return;
+
         if (dragHandle === 'center') {
+            if (selectedDrawing.status === 'active') return; // Terkunci saat active
             const deltaTime = coords.time - dragStartTime;
             const deltaPrice = coords.price - dragStartPrice;
             if (selectedDrawing.type.startsWith('position')) {
@@ -221,16 +228,28 @@ function handleMove(e) {
                     else selectedDrawing.tp = coords.price;
                 }
             } else if (dragHandle === 'sl') {
+                let newSL = coords.price;
                 if (selectedDrawing.type === 'position-long') {
-                    if (coords.price >= selectedDrawing.start.price) selectedDrawing.sl = selectedDrawing.start.price - 0.01;
-                    else selectedDrawing.sl = coords.price;
+                    if (newSL >= selectedDrawing.start.price) newSL = selectedDrawing.start.price - 0.01;
+                    
+                    // Cek Batasan SL saat active: Tidak boleh lebih lebar dari initialSL
+                    if (selectedDrawing.status === 'active' && newSL < selectedDrawing.initialSL) {
+                        newSL = selectedDrawing.initialSL;
+                    }
+                    selectedDrawing.sl = newSL;
                 } else {
-                    if (coords.price <= selectedDrawing.start.price) selectedDrawing.sl = selectedDrawing.start.price + 0.01;
-                    else selectedDrawing.sl = coords.price;
+                    if (newSL <= selectedDrawing.start.price) newSL = selectedDrawing.start.price + 0.01;
+
+                    // Cek Batasan SL saat active
+                    if (selectedDrawing.status === 'active' && newSL > selectedDrawing.initialSL) {
+                        newSL = selectedDrawing.initialSL;
+                    }
+                    selectedDrawing.sl = newSL;
                 }
             } else if (dragHandle === 'exit') {
                 selectedDrawing.end.time = coords.time;
             } else if (dragHandle === 'entry') {
+                if (selectedDrawing.status === 'active') return; // Terkunci saat active
                 let newPrice = coords.price;
                 if (selectedDrawing.type === 'position-long') {
                     if (newPrice >= selectedDrawing.tp) newPrice = selectedDrawing.tp - 0.01;
@@ -268,7 +287,6 @@ function handleEnd() {
     currentMouseX = null; currentMouseY = null;
 }
 
-// PERBAIKAN: Bungkus event listener agar tidak error sebelum container diinisialisasi
 window.initDrawingEvents = function() {
     container.addEventListener('touchstart', handleStart, { passive: false });
     container.addEventListener('mousedown', handleStart);
@@ -277,7 +295,6 @@ window.initDrawingEvents = function() {
     window.addEventListener('touchend', handleEnd);
     window.addEventListener('mouseup', handleEnd);
 
-    // Reset crosshair saat keluar area chart
     container.addEventListener('mouseleave', () => { currentMouseX = null; currentMouseY = null; });
     window.addEventListener('touchcancel', handleEnd);
 };
