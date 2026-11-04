@@ -1,6 +1,6 @@
 // ==========================================
 // FILE: replay.js
-// Deskripsi: Logika Replay & Garis Gunting (FINAL)
+// Deskripsi: Logika Replay, Chunking, & Garis Gunting
 // ==========================================
 
 const scissorsLine = document.getElementById('scissors-line');
@@ -43,26 +43,19 @@ function pauseReplay() {
 }
 
 let isDraggingScissors = false;
-
 scissorsLine.addEventListener('touchstart', (e) => {
-    isDraggingScissors = true;
-    e.preventDefault(); e.stopPropagation();
+    isDraggingScissors = true; e.preventDefault(); e.stopPropagation();
     if (chart) chart.applyOptions({ handleScroll: false, handleScale: false }); 
 }, { passive: false });
 
 window.addEventListener('touchmove', (e) => {
     if (!isDraggingScissors || !chart) return;
     e.preventDefault(); e.stopPropagation();
-    
     const rect = container.getBoundingClientRect();
-    const clientX = e.touches[0].clientX;
-    const x = clientX - rect.left;
-    
+    const x = e.touches[0].clientX - rect.left;
     let newIdx = Math.round(chart.timeScale().coordinateToLogical(x));
     if (newIdx === null) return;
-    
     newIdx = Math.max(0, Math.min(newIdx, fullData.length - 1));
-    
     if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
         series.setData(fullData.slice(0, currentReplayIndex));
@@ -80,8 +73,7 @@ btnSetReplay.onclick = () => {
     isReplayMode = !isReplayMode;
     if (isReplayMode) {
         btnSetReplay.style.background = '#ef5350';
-        isLineVisible = true;
-        btnToggleLine.innerText = "Hide Line";
+        isLineVisible = true; btnToggleLine.innerText = "Hide Line";
         currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
         if (chart) chart.timeScale().scrollToPosition(5, false);
@@ -96,21 +88,53 @@ btnSetReplay.onclick = () => {
 
 function handleSessionEnd() {
     pauseReplay();
-    if (typeof forceCloseAllTrades === 'function') {
-        forceCloseAllTrades();
-    }
-    if (typeof updateModeDropdownUI === 'function') {
-        updateModeDropdownUI();
-    }
+    if (typeof forceCloseAllTrades === 'function') forceCloseAllTrades();
+    if (typeof updateModeDropdownUI === 'function') updateModeDropdownUI();
     let sumModal = document.getElementById('summary-modal-overlay');
     let sumBal = document.getElementById('sum-balance');
-    
     if (sumModal && sumBal) {
         sumBal.innerText = '$' + simBalance.toFixed(2);
         sumBal.style.color = (simBalance - simConfig.balance) >= 0 ? '#26a69a' : '#ef5350';
         sumModal.style.display = 'flex';
     } else {
         alert("Simulasi Selesai!");
+    }
+}
+
+// FUNGSI CHUNKING: MEMOTONG DATA LAMA DAN MEMUAT BARU
+function processChunking() {
+    if (currentMode !== 'simulation') return;
+
+    // Geser jendela jika sudah masuk Chunk ke-3
+    if (currentReplayIndex >= currentChunkSize * 2) {
+        let purgeAmount = currentChunkSize;
+        absoluteStartIndex += purgeAmount;
+        
+        let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        // Simpan state scroll saat ini
+        let visibleRange = chart.timeScale().getVisibleLogicalRange();
+        
+        fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
+        currentReplayIndex -= purgeAmount;
+
+        // Hapus drawings yang sudah berada di masa lalu (sebelum fullData[0])
+        let cutoffTime = fullData[0].time;
+        drawings = drawings.filter(d => {
+            if (d.type.startsWith('position') && d.status === 'closed' && d.end.time < cutoffTime) {
+                return false; // Buang objek trade lama
+            }
+            return true;
+        });
+
+        series.setData(fullData);
+        
+        if (visibleRange) {
+            chart.timeScale().setVisibleLogicalRange({
+                from: visibleRange.from - purgeAmount,
+                to: visibleRange.to - purgeAmount
+            });
+        }
     }
 }
 
@@ -127,7 +151,9 @@ btnPlay.onclick = () => {
             
             if (typeof checkTradeHits === 'function') checkTradeHits();
 
-            // PERBAIKAN: Cek menggunakan endTime (timestamp)
+            // Cek Chunking (Geser Jendela)
+            processChunking();
+
             let currentCandleTime = fullData[currentReplayIndex - 1].time;
             if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
                 handleSessionEnd();
@@ -135,9 +161,7 @@ btnPlay.onclick = () => {
             }
             if (currentReplayIndex >= fullData.length) {
                 pauseReplay();
-                if (currentMode === 'simulation') {
-                    handleSessionEnd();
-                }
+                if (currentMode === 'simulation') handleSessionEnd();
             }
         } else {
             pauseReplay();
@@ -155,7 +179,9 @@ btnStep.onclick = () => {
         
         if (typeof checkTradeHits === 'function') checkTradeHits();
 
-        // PERBAIKAN: Cek menggunakan endTime (timestamp)
+        // Cek Chunking (Geser Jendela)
+        processChunking();
+
         let currentCandleTime = fullData[currentReplayIndex - 1].time;
         if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
             handleSessionEnd();
