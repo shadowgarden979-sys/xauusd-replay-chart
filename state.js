@@ -35,7 +35,6 @@ let isPlaying = false;
 let playInterval = null;
 let replaySpeed = 1000;
 let isLineVisible = true;
-let currentReplayIndex = 0;
 
 // State Timeframe & Data
 let currentTF = 'M5';
@@ -43,9 +42,17 @@ let fullData = [];
 let allData = {};
 let allRawData = {};
 
-// Chart & Canvas (diinisialisasi di chart-setup.js, tapi dideklarasikan di sini agar global)
+// Chart & Canvas
 let chart;
 let series;
 let bgCanvas, bgCtx;
 let fgCanvas, fgCtx;
 let container;
+
+// State Simulasi
+let currentMode = 'backtest';
+let simConfig = { balance: 100, risk: 1, startDate: null, endDate: null, endIdx: null };
+let simBalance = 100;
+let simRiskPercent = 1;
+let tradeHistory = [];
+let isSimulationRunning = false;
