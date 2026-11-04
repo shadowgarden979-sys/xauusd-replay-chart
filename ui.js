@@ -3,7 +3,6 @@
 // Deskripsi: Logika UI, Tombol, Dropdown, & Modal (FINAL)
 // ==========================================
 
-// --- Dropdown Timeframe ---
 const tfDropdown = document.getElementById('tf-dropdown');
 const btnTF = document.getElementById('btn-tf');
 
@@ -18,16 +17,12 @@ tfDropdown.querySelectorAll('div').forEach(el => {
     el.onclick = async (e) => {
         const newTF = el.getAttribute('data-tf');
         tfDropdown.style.display = 'none';
-        
         if (newTF && newTF !== currentTF && !isLoadingData) {
-            if (typeof loadTFData === 'function') {
-                await loadTFData(newTF);
-            }
+            if (typeof loadTFData === 'function') await loadTFData(newTF);
         }
     };
 });
 
-// --- Dropdown Mode & Modal Setup ---
 const modeDropdown = document.getElementById('mode-dropdown');
 const btnMode = document.getElementById('btn-mode');
 const setupModal = document.getElementById('setup-modal-overlay');
@@ -45,7 +40,6 @@ if (btnMode) {
 function updateModeDropdownUI() {
     const ddBacktest = document.getElementById('dd-backtest');
     const ddSim = document.getElementById('dd-sim');
-    
     if (currentMode === 'simulation' && isSimulationRunning) {
         if (ddBacktest) ddBacktest.style.display = 'none';
         if (ddSim) ddSim.style.display = 'none';
@@ -105,7 +99,6 @@ if (document.getElementById('btn-sum-detail')) {
     };
 }
 
-// --- LOGIKA TIME JUMP & HISTORICAL CONTEXT ---
 if (document.getElementById('btn-start-sim')) {
     document.getElementById('btn-start-sim').onclick = () => {
         let startDateStr = document.getElementById('sim-start-date').value;
@@ -120,44 +113,38 @@ if (document.getElementById('btn-start-sim')) {
         
         let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
         let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
-        let lookbackTs = startTs - (30 * 24 * 60 * 60);
 
         if (startTs >= endTs) {
             alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
             return;
         }
 
-        let startIdx = -1, lookbackIdx = 0;
-        
-        let left = 0, right = fullData.length - 1;
+        // Cari start index di allData
+        let startIdx = -1;
+        let left = 0, right = allData[currentTF].length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
-            if (fullData[mid].time >= startTs) {
+            if (allData[currentTF][mid].time >= startTs) {
                 startIdx = mid;
                 right = mid - 1;
             } else {
                 left = mid + 1;
             }
         }
-        if (startIdx === -1) startIdx = fullData.length - 1;
+        if (startIdx === -1) startIdx = allData[currentTF].length - 1;
 
-        left = 0; right = startIdx;
-        while (left <= right) {
-            let mid = Math.floor((left + right) / 2);
-            if (fullData[mid].time >= lookbackTs) {
-                lookbackIdx = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
-        }
+        // INISIALISASI CHUNKING
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); // 1 Chunk Lookback
+        let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
 
         drawings = drawings.filter(d => !d.type.startsWith('position'));
         selectedDrawing = null;
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
         if (typeof simConfig !== 'undefined') {
-            // PERBAIKAN: Simpan endTime, bukan endIdx
             simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
         }
         if (typeof currentMode !== 'undefined') currentMode = 'simulation';
@@ -172,11 +159,12 @@ if (document.getElementById('btn-start-sim')) {
         const btnSetReplay = document.getElementById('btn-set-replay');
         if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
 
-        currentReplayIndex = startIdx;
-        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        currentReplayIndex = startIdx - absoluteStartIndex;
+        series.setData(fullData);
         
         if (chart) {
-            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: startIdx + 20 });
+            let lookbackIdxInFull = Math.max(0, currentReplayIndex - currentChunkSize);
+            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdxInFull, to: currentReplayIndex + 20 });
         }
 
         if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
@@ -185,14 +173,13 @@ if (document.getElementById('btn-start-sim')) {
     };
 }
 
-// Sembunyikan dropdown jika klik di luar
 document.addEventListener('click', () => { 
     tfDropdown.style.display = 'none'; 
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
 
-// --- FUNGSI RENDER DASHBOARD HISTORY ---
 function renderHistoryDashboard() {
+    // (Fungsi Dashboard tetap sama seperti sebelumnya)
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
     let winTrades = tradeHistory.filter(t => t.status === 'WIN').length;
@@ -201,18 +188,14 @@ function renderHistoryDashboard() {
     
     document.getElementById('dash-balance').innerText = '$' + simBalance.toFixed(2);
     document.getElementById('dash-balance').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
-    
     document.getElementById('dash-pnl').innerText = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
     document.getElementById('dash-pnl').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
-    
     document.getElementById('dash-total-trade').innerText = totalTrades;
     document.getElementById('dash-winrate').innerText = winRate + '%';
     document.getElementById('dash-winrate').style.color = winRate >= 50 ? '#26a69a' : '#ef5350';
-    
     document.getElementById('dash-win').innerText = winTrades;
     document.getElementById('dash-loss').innerText = lossTrades;
 
-    // Hitung Max Drawdown & Win Streak
     let peak = simConfig.balance;
     let maxDD = 0;
     let currentStreak = 0;
@@ -224,7 +207,6 @@ function renderHistoryDashboard() {
         if (currentBal > peak) peak = currentBal;
         let dd = ((peak - currentBal) / peak) * 100;
         if (dd > maxDD) maxDD = dd;
-
         if (t.pnl > 0) {
             currentStreak += t.pnl;
             if (currentStreak > maxStreak) maxStreak = currentStreak;
@@ -236,7 +218,6 @@ function renderHistoryDashboard() {
     document.getElementById('dash-dd').innerText = '-' + maxDD.toFixed(1) + '%';
     document.getElementById('dash-streak').innerText = '$' + maxStreak.toFixed(2);
 
-    // Hitung Rata-rata Trade
     if (totalTrades > 0) {
         let startD = new Date(simConfig.startDate);
         let endD = new Date(simConfig.endDate);
@@ -244,17 +225,14 @@ function renderHistoryDashboard() {
         let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1; 
         let diffMonths = (endD.getFullYear() - startD.getFullYear()) * 12 + (endD.getMonth() - startD.getMonth()) + 1;
         let diffYears = (endD.getFullYear() - startD.getFullYear()) + 1;
-
         let avgD = (totalTrades / diffDays).toFixed(1);
         let avgM = (totalTrades / diffMonths).toFixed(1);
         let avgY = (totalTrades / diffYears).toFixed(1);
-
         document.getElementById('dash-avg').innerText = `${avgD} / ${avgM} / ${avgY}`;
     } else {
         document.getElementById('dash-avg').innerText = `0 / 0 / 0`;
     }
 
-    // Render Rekap Bulanan (Opsi A)
     let monthlyTradeCount = {};
     tradeHistory.forEach(t => {
         let d = new Date(t.entryTime * 1000);
@@ -274,14 +252,12 @@ function renderHistoryDashboard() {
             let parts = monthKey.split('-');
             let dateObj = new Date(parts[0], parts[1] - 1, 1);
             let monthName = dateObj.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-            
             let div = document.createElement('div');
             div.innerHTML = `<span>${monthName}</span> <span>${monthlyTradeCount[monthKey]} Trade</span>`;
             monthlyContainer.appendChild(div);
         });
     }
 
-    // Render Tabel
     let tbody = document.getElementById('history-table-body');
     tbody.innerHTML = '';
     let sortedHistory = [...tradeHistory].reverse();
@@ -289,7 +265,6 @@ function renderHistoryDashboard() {
     sortedHistory.forEach(t => {
         let entryD = new Date(t.entryTime * 1000);
         let exitD = new Date(t.exitTime * 1000);
-        
         let timeStr = `${entryD.getUTCHours().toString().padStart(2,'0')}:${entryD.getUTCMinutes().toString().padStart(2,'0')} - ${exitD.getUTCHours().toString().padStart(2,'0')}:${exitD.getUTCMinutes().toString().padStart(2,'0')} <br> <span style="font-size:9px; color:#888;">${entryD.getUTCDate()}/${entryD.getUTCMonth()+1}/${entryD.getUTCFullYear()}</span>`;
         let typeStr = t.type === 'position-long' ? 'LONG' : 'SHORT';
         let pnlStr = (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2);
@@ -306,7 +281,6 @@ function renderHistoryDashboard() {
         tbody.appendChild(tr);
     });
 
-    // Gambar Equity Curve dengan Sumbu X dan Y
     let canvas = document.getElementById('equity-canvas');
     let ctx = canvas.getContext('2d');
     canvas.width = canvas.parentElement.clientWidth;
@@ -314,10 +288,8 @@ function renderHistoryDashboard() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (tradeHistory.length > 0) {
-        let minBal = simConfig.balance;
-        let maxBal = simConfig.balance;
+        let minBal = simConfig.balance, maxBal = simConfig.balance;
         let balArr = [simConfig.balance];
-
         let currentB = simConfig.balance;
         tradeHistory.forEach(t => {
             currentB += t.pnl;
@@ -330,28 +302,19 @@ function renderHistoryDashboard() {
         minBal -= padding;
         maxBal += padding;
 
-        // Gambar Sumbu Y (Saldo)
         ctx.font = '9px sans-serif';
         ctx.fillStyle = '#888888';
         ctx.textAlign = 'left';
-        let ySteps = 3; // Min, Mid, Max
+        let ySteps = 3;
         for (let i = 0; i <= ySteps; i++) {
             let val = minBal + ((maxBal - minBal) * (i / ySteps));
             let yPos = canvas.height - ((val - minBal) / (maxBal - minBal) * canvas.height);
-            if (i === 0) yPos -= 5; // Geser teks paling bawah agar tidak terpotong
-            if (i === ySteps) yPos += 10; // Geser teks paling atas
+            if (i === 0) yPos -= 5; 
+            if (i === ySteps) yPos += 10;
             ctx.fillText('$' + val.toFixed(0), 5, yPos);
-            
-            // Garis bantu horizontal
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctx.lineWidth = 1;
-            ctx.moveTo(0, yPos - 3);
-            ctx.lineTo(canvas.width, yPos - 3);
-            ctx.stroke();
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1; ctx.moveTo(0, yPos - 3); ctx.lineTo(canvas.width, yPos - 3); ctx.stroke();
         }
 
-        // Gambar Sumbu X (Jumlah Trade)
         ctx.textAlign = 'center';
         let xSteps = 4; 
         for (let i = 0; i <= xSteps; i++) {
@@ -362,31 +325,21 @@ function renderHistoryDashboard() {
             ctx.fillText(`T${tradeIdx}`, xPos, canvas.height - 5);
         }
 
-        // Gambar Garis Equity
-        let paddingX = 15;
-        let paddingY = 10;
-        let graphW = canvas.width - (paddingX * 2);
-        let graphH = canvas.height - (paddingY * 2);
+        let paddingX = 15, paddingY = 10;
+        let graphW = canvas.width - (paddingX * 2), graphH = canvas.height - (paddingY * 2);
         let xStep = graphW / (balArr.length - 1 || 1);
         
-        ctx.beginPath();
-        ctx.strokeStyle = '#2962FF';
-        ctx.lineWidth = 2;
-        
+        ctx.beginPath(); ctx.strokeStyle = '#2962FF'; ctx.lineWidth = 2;
         balArr.forEach((val, i) => {
             let x = paddingX + (i * xStep);
             let y = paddingY + graphH - ((val - minBal) / (maxBal - minBal) * graphH);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         ctx.stroke();
 
         let lastX = paddingX + ((balArr.length - 1) * xStep);
         let lastY = paddingY + graphH - ((balArr[balArr.length-1] - minBal) / (maxBal - minBal) * graphH);
-        ctx.fillStyle = '#2962FF';
-        ctx.beginPath();
-        ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = '#2962FF'; ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fill();
     }
 }
 
@@ -412,7 +365,6 @@ function updateFloatingMenuPosition() {
         return;
     }
     let maxY = -Infinity, minX = Infinity, maxX = -Infinity, minY = Infinity;
-    
     if (selectedDrawing.type.startsWith('position')) {
         minX = getX(selectedDrawing.start.time); maxX = getX(selectedDrawing.end.time);
         let yTP = getY(selectedDrawing.tp) || getY(selectedDrawing.start.price);
@@ -433,18 +385,14 @@ function updateFloatingMenuPosition() {
         maxY = Math.max(getY(selectedDrawing.start.price), getY(selectedDrawing.end.price));
         if (minX === null || maxX === null || minY === null || maxY === null) { floatingMenu.style.display = 'none'; return; }
     }
-
     let centerX = (minX + maxX) / 2;
     let menuX = centerX - (floatingMenu.offsetWidth / 2); 
     let menuY = minY - 50; 
-
     menuX = Math.max(10, Math.min(menuX, fgCanvas.width - floatingMenu.offsetWidth - 10));
     if (menuY < 10) menuY = maxY + 10; 
-
     floatingMenu.style.display = 'flex';
     floatingMenu.style.left = menuX + 'px';
     floatingMenu.style.top = menuY + 'px';
-
     if (selectedDrawing.type === 'line') {
         btnSnap.style.display = 'block';
         btnSnap.className = 'f-btn' + (snapEnabled ? ' snap-active' : '');
@@ -453,74 +401,44 @@ function updateFloatingMenuPosition() {
     }
 }
 
-btnDelete.onclick = () => {
-    if (selectedDrawing) {
-        drawings = drawings.filter(d => d !== selectedDrawing);
-        selectedDrawing = null; saveToLocalStorage();
-    }
-};
-
+btnDelete.onclick = () => { if (selectedDrawing) { drawings = drawings.filter(d => d !== selectedDrawing); selectedDrawing = null; saveToLocalStorage(); } };
 btnSnap.onclick = () => { snapEnabled = !snapEnabled; };
-
 btnCostum.onclick = () => {
     if (!selectedDrawing) return;
-    
     colorInputContainer.style.display = 'block';
     textInputContainer.style.display = 'none';
     fiboInputContainer.style.display = 'none';
     posInputContainer.style.display = 'none';
-
-    if (selectedDrawing.type === 'box') {
-        textInputContainer.style.display = 'block'; inputText.value = selectedDrawing.text || '';
-    } else if (selectedDrawing.type === 'fibo') {
-        fiboInputContainer.style.display = 'block';
-        inputLevels.value = (selectedDrawing.levels || defaultSettings.fibo.levels).join(', ');
-    } else if (selectedDrawing.type.startsWith('position')) {
-        colorInputContainer.style.display = 'none'; 
-        posInputContainer.style.display = 'block';
+    if (selectedDrawing.type === 'box') { textInputContainer.style.display = 'block'; inputText.value = selectedDrawing.text || ''; } 
+    else if (selectedDrawing.type === 'fibo') { fiboInputContainer.style.display = 'block'; inputLevels.value = (selectedDrawing.levels || defaultSettings.fibo.levels).join(', '); } 
+    else if (selectedDrawing.type.startsWith('position')) {
+        colorInputContainer.style.display = 'none'; posInputContainer.style.display = 'block';
         inputBaseOp.value = selectedDrawing.baseOpacity !== undefined ? selectedDrawing.baseOpacity : defaultSettings[selectedDrawing.type].baseOpacity;
         inputActiveOp.value = selectedDrawing.activeOpacity !== undefined ? selectedDrawing.activeOpacity : defaultSettings[selectedDrawing.type].activeOpacity;
-    } else {
-        inputColor.value = selectedDrawing.color || defaultSettings[selectedDrawing.type]?.color || '#2962FF';
-    }
-
+    } else { inputColor.value = selectedDrawing.color || defaultSettings[selectedDrawing.type]?.color || '#2962FF'; }
     modalOverlay.style.display = 'flex';
 };
 
 document.getElementById('btn-close-modal').onclick = () => { modalOverlay.style.display = 'none'; };
-
 document.getElementById('btn-save-modal').onclick = () => {
     if (selectedDrawing) {
         let saveProps = {};
-        
-        if (selectedDrawing.type === 'box') {
-            selectedDrawing.text = inputText.value;
-            saveProps.text = inputText.value;
-        }
-        if (selectedDrawing.type === 'fibo') {
-            selectedDrawing.levels = inputLevels.value.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-            saveProps.levels = selectedDrawing.levels;
-        }
+        if (selectedDrawing.type === 'box') { selectedDrawing.text = inputText.value; saveProps.text = inputText.value; }
+        if (selectedDrawing.type === 'fibo') { selectedDrawing.levels = inputLevels.value.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v)); saveProps.levels = selectedDrawing.levels; }
         if (selectedDrawing.type.startsWith('position')) {
-            selectedDrawing.baseOpacity = parseFloat(inputBaseOp.value);
-            selectedDrawing.activeOpacity = parseFloat(inputActiveOp.value);
+            selectedDrawing.baseOpacity = parseFloat(inputBaseOp.value); selectedDrawing.activeOpacity = parseFloat(inputActiveOp.value);
             if (isNaN(selectedDrawing.baseOpacity)) selectedDrawing.baseOpacity = 0.1;
             if (isNaN(selectedDrawing.activeOpacity)) selectedDrawing.activeOpacity = 0.4;
-            saveProps.baseOpacity = selectedDrawing.baseOpacity;
-            saveProps.activeOpacity = selectedDrawing.activeOpacity;
+            saveProps.baseOpacity = selectedDrawing.baseOpacity; saveProps.activeOpacity = selectedDrawing.activeOpacity;
         } else if (!selectedDrawing.type.startsWith('position') && selectedDrawing.type !== 'box' && selectedDrawing.type !== 'fibo') {
-            selectedDrawing.color = inputColor.value;
-            saveProps.color = selectedDrawing.color;
+            selectedDrawing.color = inputColor.value; saveProps.color = selectedDrawing.color;
         }
-
         defaultSettings[selectedDrawing.type] = { ...defaultSettings[selectedDrawing.type], ...saveProps };
-        saveDefaults();
-        saveToLocalStorage();
+        saveDefaults(); saveToLocalStorage();
     }
     modalOverlay.style.display = 'none';
 };
 
-// --- Tombol Toolbar ---
 function setTool(tool, btnId = null) {
     currentTool = tool;
     document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
@@ -538,8 +456,4 @@ document.getElementById('btn-measure').onclick = () => setTool('measure', 'btn-m
 document.getElementById('btn-long').onclick = () => setTool('position-long', 'btn-long');
 document.getElementById('btn-short').onclick = () => setTool('position-short', 'btn-short');
 
-document.getElementById('btn-clear').onclick = () => {
-    if(confirm("Hapus semua objek?")) {
-        drawings = []; selectedDrawing = null; saveToLocalStorage();
-    }
-};
+document.getElementById('btn-clear').onclick = () => { if(confirm("Hapus semua objek?")) { drawings = []; selectedDrawing = null; saveToLocalStorage(); } };
