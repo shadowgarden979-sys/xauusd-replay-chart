@@ -32,6 +32,7 @@ const modeDropdown = document.getElementById('mode-dropdown');
 const btnMode = document.getElementById('btn-mode');
 const setupModal = document.getElementById('setup-modal-overlay');
 const historyModal = document.getElementById('history-modal-overlay');
+const summaryModal = document.getElementById('summary-modal-overlay');
 
 if (btnMode) {
     btnMode.onclick = (e) => {
@@ -39,6 +40,21 @@ if (btnMode) {
         modeDropdown.style.display = modeDropdown.style.display === 'flex' ? 'none' : 'flex';
         tfDropdown.style.display = 'none';
     };
+}
+
+function updateModeDropdownUI() {
+    const ddBacktest = document.getElementById('dd-backtest');
+    const ddSim = document.getElementById('dd-sim');
+    
+    if (currentMode === 'simulation' && isSimulationRunning) {
+        // HARDCORE LOCK: Sembunyikan opsi selain Riwayat
+        if (ddBacktest) ddBacktest.style.display = 'none';
+        if (ddSim) ddSim.style.display = 'none';
+    } else {
+        // Buka Kunci
+        if (ddBacktest) ddBacktest.style.display = 'block';
+        if (ddSim) ddSim.style.display = 'block';
+    }
 }
 
 if (modeDropdown) {
@@ -56,7 +72,6 @@ if (modeDropdown) {
                     alert("Masuk ke Mode Simulasi terlebih dahulu untuk melihat riwayat.");
                 } else {
                     historyModal.style.display = 'flex';
-                    // Gambar dashboard setelah modal muncul agar ukuran canvas valid
                     setTimeout(renderHistoryDashboard, 50); 
                 }
             } else {
@@ -66,6 +81,7 @@ if (modeDropdown) {
                     currentMode = 'backtest';
                     btnMode.innerText = 'MODE ▼';
                     btnMode.style.background = '#485c7b';
+                    updateModeDropdownUI();
                     if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
                 }
             }
@@ -79,6 +95,16 @@ if (document.getElementById('btn-close-setup')) {
 }
 if (document.getElementById('btn-close-history')) {
     document.getElementById('btn-close-history').onclick = () => { historyModal.style.display = 'none'; };
+}
+if (document.getElementById('btn-sum-close')) {
+    document.getElementById('btn-sum-close').onclick = () => { summaryModal.style.display = 'none'; };
+}
+if (document.getElementById('btn-sum-detail')) {
+    document.getElementById('btn-sum-detail').onclick = () => { 
+        summaryModal.style.display = 'none'; 
+        historyModal.style.display = 'flex';
+        setTimeout(renderHistoryDashboard, 50); 
+    };
 }
 
 // --- LOGIKA TIME JUMP & HISTORICAL CONTEXT ---
@@ -168,6 +194,7 @@ if (document.getElementById('btn-start-sim')) {
 
         if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
         if (typeof startSimulation === 'function') startSimulation();
+        updateModeDropdownUI();
     };
 }
 
@@ -217,7 +244,7 @@ function renderHistoryDashboard() {
     document.getElementById('dash-dd').innerText = '-' + maxDD.toFixed(1) + '%';
     document.getElementById('dash-streak').innerText = '$' + maxStreak.toFixed(2);
 
-    // Hitung Rata-rata Trade (D/M/Y)
+    // Hitung Rata-rata Trade
     if (totalTrades > 0) {
         let startD = new Date(simConfig.startDate);
         let endD = new Date(simConfig.endDate);
@@ -235,11 +262,36 @@ function renderHistoryDashboard() {
         document.getElementById('dash-avg').innerText = `0 / 0 / 0`;
     }
 
+    // Render Rekap Bulanan (Opsi A)
+    let monthlyTradeCount = {};
+    tradeHistory.forEach(t => {
+        let d = new Date(t.entryTime * 1000);
+        let key = `${d.getUTCFullYear()}-${(d.getUTCMonth()+1).toString().padStart(2, '0')}`;
+        if (!monthlyTradeCount[key]) monthlyTradeCount[key] = 0;
+        monthlyTradeCount[key]++;
+    });
+
+    let monthlyContainer = document.getElementById('dash-monthly');
+    monthlyContainer.innerHTML = '';
+    let sortedMonths = Object.keys(monthlyTradeCount).sort();
+    
+    if (sortedMonths.length === 0) {
+        monthlyContainer.innerHTML = '<div style="color:#888;">Belum ada data</div>';
+    } else {
+        sortedMonths.forEach(monthKey => {
+            let parts = monthKey.split('-');
+            let dateObj = new Date(parts[0], parts[1] - 1, 1);
+            let monthName = dateObj.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+            
+            let div = document.createElement('div');
+            div.innerHTML = `<span>${monthName}</span> <span>${monthlyTradeCount[monthKey]} Trade</span>`;
+            monthlyContainer.appendChild(div);
+        });
+    }
+
     // Render Tabel
     let tbody = document.getElementById('history-table-body');
     tbody.innerHTML = '';
-    
-    // Urutkan dari terbaru ke terlama
     let sortedHistory = [...tradeHistory].reverse();
 
     sortedHistory.forEach(t => {
@@ -265,11 +317,8 @@ function renderHistoryDashboard() {
     // Gambar Equity Curve
     let canvas = document.getElementById('equity-canvas');
     let ctx = canvas.getContext('2d');
-    
-    // Pastikan ukuran canvas sesuai dengan container
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = canvas.parentElement.clientHeight;
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (tradeHistory.length > 0) {
@@ -285,7 +334,6 @@ function renderHistoryDashboard() {
             if (currentB > maxBal) maxBal = currentB;
         });
 
-        // Beri padding
         let padding = (maxBal - minBal) * 0.1 || 1;
         minBal -= padding;
         maxBal += padding;
@@ -299,13 +347,11 @@ function renderHistoryDashboard() {
         balArr.forEach((val, i) => {
             let x = i * xStep;
             let y = canvas.height - ((val - minBal) / (maxBal - minBal) * canvas.height);
-            
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
 
-        // Gambar titik terakhir
         let lastX = (balArr.length - 1) * xStep;
         let lastY = canvas.height - ((balArr[balArr.length-1] - minBal) / (maxBal - minBal) * canvas.height);
         ctx.fillStyle = '#2962FF';
