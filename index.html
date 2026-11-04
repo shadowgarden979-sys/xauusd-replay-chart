@@ -78,11 +78,12 @@
         .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
         .snap-active { background-color: #2962FF !important; color: white; }
 
-        #modal-overlay, #setup-modal-overlay, #history-modal-overlay {
+        /* CSS UNTUK SEMUA MODAL */
+        #modal-overlay, #setup-modal-overlay, #history-modal-overlay, #summary-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
             z-index: 100; display: none; justify-content: center; align-items: center;
         }
-        #modal-content, #setup-modal-content, #history-modal-content {
+        #modal-content, #setup-modal-content, #history-modal-content, #summary-modal-content {
             background: #2B2B43; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px;
             color: white; display: flex; flex-direction: column; gap: 10px;
         }
@@ -90,10 +91,14 @@
         #modal-content input, #setup-modal-content input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         
-        /* CSS untuk Dashboard Riwayat */
+        /* CSS Dashboard & Summary */
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 10px; }
         .stats-grid div { background: #1e1e1e; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; }
         .stats-grid span { font-weight: bold; color: #26a69a; display: block; font-size: 14px; }
+        
+        #dash-monthly { max-height: 60px; overflow-y: auto; font-size: 11px; color: #d1d4dc; margin-top: 5px; padding-right: 5px;}
+        #dash-monthly div { display: flex; justify-content: space-between; border-bottom: 1px solid #363A45; padding: 2px 0;}
+
         #equity-canvas-container { width: 100%; height: 150px; background: #1e1e1e; border: 1px solid #485c7b; border-radius: 4px; position: relative; overflow: hidden;}
         #equity-canvas { width: 100%; height: 100%; }
         .table-container { max-height: 200px; overflow-y: auto; border: 1px solid #485c7b; border-radius: 4px; }
@@ -131,9 +136,9 @@
             <div style="position: relative;">
                 <button id="btn-mode" style="background:#485c7b;">MODE ▼</button>
                 <div id="mode-dropdown">
-                    <div data-mode="backtest">MODE BACKTEST</div>
-                    <div data-mode="simulation">MODE SIMULASI</div>
-                    <div data-mode="history">MODE RIWAYAT TRADE</div>
+                    <div data-mode="backtest" id="dd-backtest">MODE BACKTEST</div>
+                    <div data-mode="simulation" id="dd-sim">MODE SIMULASI</div>
+                    <div data-mode="history" id="dd-history">MODE RIWAYAT TRADE</div>
                 </div>
             </div>
         </div>
@@ -237,7 +242,23 @@
         </div>
     </div>
 
-    <!-- MODAL RIWAYAT TRADE (DASHBOARD BARU) -->
+    <!-- MODAL SUMMARY AKHIR SESI (BARU) -->
+    <div id="summary-modal-overlay">
+        <div id="summary-modal-content" style="text-align: center;">
+            <h3 style="margin:0; color:#FFD700;">Sesi Simulasi Selesai</h3>
+            <p style="font-size:12px; color:#d1d4dc; margin:5px 0;">Simulasi telah mencapai batas waktu atau data.</p>
+            <div style="margin: 15px 0;">
+                <div style="font-size:24px; font-weight:bold; color:#26a69a;" id="sum-balance">$100.00</div>
+                <div style="font-size:12px; color:#d1d4dc;">Saldo Akhir</div>
+            </div>
+            <div class="modal-btns" style="justify-content: center;">
+                <button class="btn" id="btn-sum-close">Tutup</button>
+                <button class="btn" id="btn-sum-detail" style="background:#2962FF;">Lihat Detail Riwayat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RIWAYAT TRADE (DASHBOARD) -->
     <div id="history-modal-overlay">
         <div id="history-modal-content" style="max-width: 450px; width: 95%;">
             <h3 style="margin:0; text-align:center;">Dashboard Trading</h3>
@@ -250,6 +271,12 @@
                 <div>Max Drawdown <span id="dash-dd" style="color:#ef5350;">0%</span></div>
                 <div>Max Win Streak <span id="dash-streak" style="color:#26a69a;">$0.00</span></div>
                 <div>Avg Trade (D/M/Y) <span id="dash-avg">0 / 0 / 0</span></div>
+                
+                <!-- Kotak Rekap Bulanan (Opsi A) -->
+                <div style="grid-column: span 2;">
+                    Rincian Trade per Bulan:
+                    <div id="dash-monthly"></div>
+                </div>
             </div>
 
             <!-- Equity Curve -->
