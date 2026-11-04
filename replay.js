@@ -127,7 +127,9 @@ btnPlay.onclick = () => {
             
             if (typeof checkTradeHits === 'function') checkTradeHits();
 
-            if (currentMode === 'simulation' && simConfig.endIdx !== null && currentReplayIndex - 1 >= simConfig.endIdx) {
+            // PERBAIKAN: Cek menggunakan endTime (timestamp)
+            let currentCandleTime = fullData[currentReplayIndex - 1].time;
+            if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
                 handleSessionEnd();
                 return;
             }
@@ -153,7 +155,9 @@ btnStep.onclick = () => {
         
         if (typeof checkTradeHits === 'function') checkTradeHits();
 
-        if (currentMode === 'simulation' && simConfig.endIdx !== null && currentReplayIndex - 1 >= simConfig.endIdx) {
+        // PERBAIKAN: Cek menggunakan endTime (timestamp)
+        let currentCandleTime = fullData[currentReplayIndex - 1].time;
+        if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
             handleSessionEnd();
         }
     }
