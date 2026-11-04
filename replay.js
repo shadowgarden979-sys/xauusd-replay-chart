@@ -28,9 +28,7 @@ function updateScissorsPosition() {
 }
 
 function updateScissorsVisibility() {
-    // PERBAIKAN: Menyembunyikan garis gunting jika berada di mode simulasi
     let isSimulation = (typeof currentMode !== 'undefined' && currentMode === 'simulation');
-    
     if (!isReplayMode || isPlaying || !isLineVisible || isSimulation) {
         scissorsLine.style.display = 'none';
     } else {
@@ -63,7 +61,6 @@ window.addEventListener('touchmove', (e) => {
     let newIdx = Math.round(chart.timeScale().coordinateToLogical(x));
     if (newIdx === null) return;
     
-    // Batas mundur menjadi 0 (candle pertama)
     newIdx = Math.max(0, Math.min(newIdx, fullData.length - 1));
     
     if (newIdx !== currentReplayIndex) {
@@ -107,7 +104,24 @@ btnPlay.onclick = () => {
         if (currentReplayIndex < fullData.length) {
             currentReplayIndex++;
             series.update(fullData[currentReplayIndex - 1]); 
-            if (currentReplayIndex >= fullData.length) pauseReplay();
+            
+            // Panggil Mesin Simulasi
+            if (typeof checkTradeHits === 'function') checkTradeHits();
+
+            // Cek Batas Akhir Sesi Simulasi (Tanggal atau Data Habis)
+            if (currentMode === 'simulation' && simConfig.endIdx !== null && currentReplayIndex - 1 >= simConfig.endIdx) {
+                pauseReplay();
+                if (typeof forceCloseAllTrades === 'function') forceCloseAllTrades();
+                alert("Simulasi Selesai (Mencapai Tanggal Selesai)!");
+                return;
+            }
+            if (currentReplayIndex >= fullData.length) {
+                pauseReplay();
+                if (currentMode === 'simulation' && typeof forceCloseAllTrades === 'function') {
+                    forceCloseAllTrades();
+                    alert("Simulasi Selesai (Data Habis)!");
+                }
+            }
         } else {
             pauseReplay();
         }
@@ -121,6 +135,16 @@ btnStep.onclick = () => {
     if (currentReplayIndex < fullData.length) {
         currentReplayIndex++;
         series.update(fullData[currentReplayIndex - 1]);
+        
+        // Panggil Mesin Simulasi
+        if (typeof checkTradeHits === 'function') checkTradeHits();
+
+        // Cek Batas Akhir
+        if (currentMode === 'simulation' && simConfig.endIdx !== null && currentReplayIndex - 1 >= simConfig.endIdx) {
+            pauseReplay();
+            if (typeof forceCloseAllTrades === 'function') forceCloseAllTrades();
+            alert("Simulasi Selesai (Mencapai Tanggal Selesai)!");
+        }
     }
 };
 
