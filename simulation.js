@@ -45,7 +45,6 @@ function checkTradeHits() {
 
         // 2. Cek Active Trade (TP/SL & Auto-Extend)
         if (d.status === 'active') {
-            // AUTO-EXTEND: Paksa ujung kanan kotak memanjang ke candle terbaru + 1 celah
             let nextIdx = Math.min(currentReplayIndex, fullData.length - 1);
             if (fullData[nextIdx]) {
                 d.end.time = fullData[nextIdx].time;
@@ -85,7 +84,7 @@ function checkTradeHits() {
 function closeTrade(drawing, exitPrice, status, exitTime) {
     drawing.status = 'closed';
     drawing.exitPrice = exitPrice;
-    drawing.exitTime = exitTime; // Simpan waktu persis candle keluar
+    drawing.exitTime = exitTime;
     
     let isLong = drawing.type === 'position-long';
     let finalPnl = isLong ? (exitPrice - drawing.start.price) * drawing.valuePerPoint : (drawing.start.price - exitPrice) * drawing.valuePerPoint;
@@ -100,7 +99,8 @@ function closeTrade(drawing, exitPrice, status, exitTime) {
         exit: exitPrice,
         pnl: finalPnl,
         status: status,
-        time: new Date().toISOString()
+        entryTime: drawing.entryTime, // Waktu Chart
+        exitTime: exitTime            // Waktu Chart
     });
 }
 
