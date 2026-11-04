@@ -47,11 +47,9 @@ function updateModeDropdownUI() {
     const ddSim = document.getElementById('dd-sim');
     
     if (currentMode === 'simulation' && isSimulationRunning) {
-        // HARDCORE LOCK: Sembunyikan opsi selain Riwayat
         if (ddBacktest) ddBacktest.style.display = 'none';
         if (ddSim) ddSim.style.display = 'none';
     } else {
-        // Buka Kunci
         if (ddBacktest) ddBacktest.style.display = 'block';
         if (ddSim) ddSim.style.display = 'block';
     }
@@ -129,7 +127,7 @@ if (document.getElementById('btn-start-sim')) {
             return;
         }
 
-        let startIdx = -1, endIdx = -1, lookbackIdx = 0;
+        let startIdx = -1, lookbackIdx = 0;
         
         let left = 0, right = fullData.length - 1;
         while (left <= right) {
@@ -142,18 +140,6 @@ if (document.getElementById('btn-start-sim')) {
             }
         }
         if (startIdx === -1) startIdx = fullData.length - 1;
-
-        left = 0; right = fullData.length - 1;
-        while (left <= right) {
-            let mid = Math.floor((left + right) / 2);
-            if (fullData[mid].time <= endTs) {
-                endIdx = mid;
-                left = mid + 1;
-            } else {
-                right = mid - 1;
-            }
-        }
-        if (endIdx === -1) endIdx = fullData.length - 1;
 
         left = 0; right = startIdx;
         while (left <= right) {
@@ -171,7 +157,8 @@ if (document.getElementById('btn-start-sim')) {
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
         if (typeof simConfig !== 'undefined') {
-            simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endIdx: endIdx };
+            // PERBAIKAN: Simpan endTime, bukan endIdx
+            simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
         }
         if (typeof currentMode !== 'undefined') currentMode = 'simulation';
         
@@ -208,8 +195,9 @@ document.addEventListener('click', () => {
 function renderHistoryDashboard() {
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
-    let wins = tradeHistory.filter(t => t.status === 'WIN').length;
-    let winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : 0;
+    let winTrades = tradeHistory.filter(t => t.status === 'WIN').length;
+    let lossTrades = tradeHistory.filter(t => t.status === 'LOSS').length;
+    let winRate = totalTrades > 0 ? ((winTrades / totalTrades) * 100).toFixed(1) : 0;
     
     document.getElementById('dash-balance').innerText = '$' + simBalance.toFixed(2);
     document.getElementById('dash-balance').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
@@ -217,8 +205,12 @@ function renderHistoryDashboard() {
     document.getElementById('dash-pnl').innerText = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
     document.getElementById('dash-pnl').style.color = totalPnl >= 0 ? '#26a69a' : '#ef5350';
     
+    document.getElementById('dash-total-trade').innerText = totalTrades;
     document.getElementById('dash-winrate').innerText = winRate + '%';
     document.getElementById('dash-winrate').style.color = winRate >= 50 ? '#26a69a' : '#ef5350';
+    
+    document.getElementById('dash-win').innerText = winTrades;
+    document.getElementById('dash-loss').innerText = lossTrades;
 
     // Hitung Max Drawdown & Win Streak
     let peak = simConfig.balance;
@@ -314,7 +306,7 @@ function renderHistoryDashboard() {
         tbody.appendChild(tr);
     });
 
-    // Gambar Equity Curve
+    // Gambar Equity Curve dengan Sumbu X dan Y
     let canvas = document.getElementById('equity-canvas');
     let ctx = canvas.getContext('2d');
     canvas.width = canvas.parentElement.clientWidth;
@@ -334,26 +326,63 @@ function renderHistoryDashboard() {
             if (currentB > maxBal) maxBal = currentB;
         });
 
-        let padding = (maxBal - minBal) * 0.1 || 1;
+        let padding = (maxBal - minBal) * 0.15 || 1;
         minBal -= padding;
         maxBal += padding;
 
-        let xStep = canvas.width / (balArr.length - 1 || 1);
+        // Gambar Sumbu Y (Saldo)
+        ctx.font = '9px sans-serif';
+        ctx.fillStyle = '#888888';
+        ctx.textAlign = 'left';
+        let ySteps = 3; // Min, Mid, Max
+        for (let i = 0; i <= ySteps; i++) {
+            let val = minBal + ((maxBal - minBal) * (i / ySteps));
+            let yPos = canvas.height - ((val - minBal) / (maxBal - minBal) * canvas.height);
+            if (i === 0) yPos -= 5; // Geser teks paling bawah agar tidak terpotong
+            if (i === ySteps) yPos += 10; // Geser teks paling atas
+            ctx.fillText('$' + val.toFixed(0), 5, yPos);
+            
+            // Garis bantu horizontal
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(0, yPos - 3);
+            ctx.lineTo(canvas.width, yPos - 3);
+            ctx.stroke();
+        }
+
+        // Gambar Sumbu X (Jumlah Trade)
+        ctx.textAlign = 'center';
+        let xSteps = 4; 
+        for (let i = 0; i <= xSteps; i++) {
+            let tradeIdx = Math.round((balArr.length - 1) * (i / xSteps));
+            let xPos = (canvas.width / xSteps) * i;
+            if (i === 0) xPos += 10;
+            if (i === xSteps) xPos -= 15;
+            ctx.fillText(`T${tradeIdx}`, xPos, canvas.height - 5);
+        }
+
+        // Gambar Garis Equity
+        let paddingX = 15;
+        let paddingY = 10;
+        let graphW = canvas.width - (paddingX * 2);
+        let graphH = canvas.height - (paddingY * 2);
+        let xStep = graphW / (balArr.length - 1 || 1);
         
         ctx.beginPath();
         ctx.strokeStyle = '#2962FF';
         ctx.lineWidth = 2;
         
         balArr.forEach((val, i) => {
-            let x = i * xStep;
-            let y = canvas.height - ((val - minBal) / (maxBal - minBal) * canvas.height);
+            let x = paddingX + (i * xStep);
+            let y = paddingY + graphH - ((val - minBal) / (maxBal - minBal) * graphH);
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
 
-        let lastX = (balArr.length - 1) * xStep;
-        let lastY = canvas.height - ((balArr[balArr.length-1] - minBal) / (maxBal - minBal) * canvas.height);
+        let lastX = paddingX + ((balArr.length - 1) * xStep);
+        let lastY = paddingY + graphH - ((balArr[balArr.length-1] - minBal) / (maxBal - minBal) * graphH);
         ctx.fillStyle = '#2962FF';
         ctx.beginPath();
         ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
