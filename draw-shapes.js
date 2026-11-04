@@ -115,12 +115,10 @@ function drawMeasureTool() {
 }
 
 function calculateTradeLine(d) {
-    // PERBAIKAN: Jika masih pending, jangan gambar garis (return null)
     if (d.status === 'pending') return null;
 
-    // PERBAIKAN: Gunakan entryTime (waktu baru tersentuh), bukan start.time (waktu digambar)
     let startTime = d.entryTime ? d.entryTime : d.start.time;
-    let endTime = d.end.time;
+    let endTime = d.status === 'closed' && d.exitTime ? d.exitTime : d.end.time;
     
     let entryIndex = 0;
     let left = 0, right = fullData.length - 1;
@@ -149,9 +147,18 @@ function calculateTradeLine(d) {
 
     if (maxIdx < 0 || entryIndex > maxIdx) return null;
 
-    // Untuk status active/closed, kita tahu pasti candle ke-berapa dia entry
     let hitEntryIndex = entryIndex; 
 
+    // Jika sudah closed, kita tahu pasti candle exit-nya
+    if (d.status === 'closed' && d.exitTime) {
+        let exitIdx = maxIdx;
+        for (let i = hitEntryIndex; i <= maxIdx; i++) {
+            if (fullData[i].time >= d.exitTime) { exitIdx = i; break; }
+        }
+        return { startIdx: hitEntryIndex, endIdx: exitIdx, endPrice: d.exitPrice };
+    }
+
+    // Jika active, cari candle TP/SL
     let hitExitIndex = null, hitExitPrice = null;
     let isLong = d.type === 'position-long';
 
@@ -186,7 +193,7 @@ function drawPositionBg(d) {
     let baseOp = d.baseOpacity !== undefined ? d.baseOpacity : 0.1;
     let activeOp = d.activeOpacity !== undefined ? d.activeOpacity : 0.4;
     
-    if (isClosed) { baseOp = 0.05; activeOp = 0.1; }
+    if (isClosed) { baseOp = 0.02; activeOp = 0.05; }
     else if (isPending) { baseOp = 0.05; activeOp = 0.2; }
 
     bgCtx.fillStyle = `rgba(38, 166, 154, ${baseOp})`;
@@ -196,12 +203,22 @@ function drawPositionBg(d) {
     bgCtx.beginPath(); bgCtx.rect(x1, yEntry, x2 - x1, ySL - yEntry); bgCtx.fill();
 
     if (isClosed) {
-        bgCtx.fillStyle = d.pnl >= 0 ? `rgba(38, 166, 154, 0.4)` : `rgba(239, 83, 80, 0.4)`;
-        let exitY = getY(d.exitPrice);
-        if (exitY !== null) {
-            bgCtx.beginPath(); bgCtx.arc(x2, exitY, 4, 0, Math.PI * 2); bgCtx.fill();
+        // Gambar garis putus-putus dari Entry ke Exit
+        const tradeInfo = calculateTradeLine(d);
+        if (tradeInfo) {
+            const xStart = getX(fullData[tradeInfo.startIdx].time);
+            const xExit = getX(fullData[tradeInfo.endIdx].time);
+            const yExit = getY(tradeInfo.endPrice);
+
+            bgCtx.strokeStyle = '#888888'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+            bgCtx.beginPath(); bgCtx.moveTo(xStart, yEntry); bgCtx.lineTo(xExit, yExit); bgCtx.stroke();
+            bgCtx.setLineDash([]);
+
+            // Gambar bola di candle Exit
+            bgCtx.fillStyle = d.pnl >= 0 ? 'rgba(38, 166, 154, 0.8)' : 'rgba(239, 83, 80, 0.8)';
+            bgCtx.beginPath(); bgCtx.arc(xExit, yExit, 4, 0, Math.PI * 2); bgCtx.fill();
         }
-    } else if (!isPending) { // Hanya gambar area live jika sudah active
+    } else if (!isPending) { 
         const tradeInfo = calculateTradeLine(d);
         if (tradeInfo) {
             const xStart = getX(fullData[tradeInfo.startIdx].time);
@@ -230,10 +247,11 @@ function drawPositionBg(d) {
 
             bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
             bgCtx.beginPath(); bgCtx.moveTo(xStart, yEntry); bgCtx.lineTo(xExit, yExit); bgCtx.stroke();
+            bgCtx.setLineDash([]);
         }
     }
 
-    bgCtx.strokeStyle = '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
+    bgCtx.strokeStyle = isClosed ? '#888888' : '#ffffff'; bgCtx.lineWidth = 1; bgCtx.setLineDash([5, 5]);
     bgCtx.beginPath(); bgCtx.moveTo(x1, yEntry); bgCtx.lineTo(x2, yEntry); bgCtx.stroke();
     bgCtx.setLineDash([]);
 
