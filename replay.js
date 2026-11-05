@@ -101,40 +101,30 @@ function handleSessionEnd() {
     }
 }
 
-// FUNGSI CHUNKING: MEMOTONG DATA LAMA DAN MEMUAT BARU
-function processChunking() {
+// FUNGSI CHUNKING UNTUK GESER JENDELA
+function checkChunkShift() {
     if (currentMode !== 'simulation') return;
-
-    // Geser jendela jika sudah masuk Chunk ke-3
+    
+    // Jika index replay sudah mencapai 2x chunk (mulai masuk chunk ke-3)
     if (currentReplayIndex >= currentChunkSize * 2) {
         let purgeAmount = currentChunkSize;
         absoluteStartIndex += purgeAmount;
         
         let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
-        
-        // Simpan state scroll saat ini
-        let visibleRange = chart.timeScale().getVisibleLogicalRange();
-        
         fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
+        
         currentReplayIndex -= purgeAmount;
 
-        // Hapus drawings yang sudah berada di masa lalu (sebelum fullData[0])
+        // Hapus drawings yang sudah berada di masa lalu
         let cutoffTime = fullData[0].time;
         drawings = drawings.filter(d => {
-            if (d.type.startsWith('position') && d.status === 'closed' && d.end.time < cutoffTime) {
-                return false; // Buang objek trade lama
-            }
+            if (d.type.startsWith('position') && d.status === 'closed' && d.end.time < cutoffTime) return false;
             return true;
         });
 
-        series.setData(fullData);
-        
-        if (visibleRange) {
-            chart.timeScale().setVisibleLogicalRange({
-                from: visibleRange.from - purgeAmount,
-                to: visibleRange.to - purgeAmount
-            });
-        }
+        // PENTING: Potong data masa depan agar tidak terlihat!
+        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        chart.timeScale().fitContent();
     }
 }
 
@@ -151,8 +141,8 @@ btnPlay.onclick = () => {
             
             if (typeof checkTradeHits === 'function') checkTradeHits();
 
-            // Cek Chunking (Geser Jendela)
-            processChunking();
+            // Cek Chunking
+            checkChunkShift();
 
             let currentCandleTime = fullData[currentReplayIndex - 1].time;
             if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
@@ -179,8 +169,8 @@ btnStep.onclick = () => {
         
         if (typeof checkTradeHits === 'function') checkTradeHits();
 
-        // Cek Chunking (Geser Jendela)
-        processChunking();
+        // Cek Chunking
+        checkChunkShift();
 
         let currentCandleTime = fullData[currentReplayIndex - 1].time;
         if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
