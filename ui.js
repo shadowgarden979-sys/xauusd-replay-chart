@@ -99,6 +99,7 @@ if (document.getElementById('btn-sum-detail')) {
     };
 }
 
+// --- LOGIKA TIME JUMP ---
 if (document.getElementById('btn-start-sim')) {
     document.getElementById('btn-start-sim').onclick = () => {
         let startDateStr = document.getElementById('sim-start-date').value;
@@ -120,25 +121,29 @@ if (document.getElementById('btn-start-sim')) {
         }
 
         // Cari start index di allData
+        let sourceData = allData[currentTF];
         let startIdx = -1;
-        let left = 0, right = allData[currentTF].length - 1;
+        let left = 0, right = sourceData.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
-            if (allData[currentTF][mid].time >= startTs) {
+            if (sourceData[mid].time >= startTs) {
                 startIdx = mid;
                 right = mid - 1;
             } else {
                 left = mid + 1;
             }
         }
-        if (startIdx === -1) startIdx = allData[currentTF].length - 1;
+        if (startIdx === -1) startIdx = sourceData.length - 1;
 
-        // INISIALISASI CHUNKING
+        // INISIALISASI CHUNKING (Jendela 3 Chunk)
         currentChunkSize = chunkSizes[currentTF] || 6000;
-        absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); // 1 Chunk Lookback
-        let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
         
-        fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
+        // Lookback 1 Chunk, Start, Future 1 Chunk
+        absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); 
+        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+        currentReplayIndex = startIdx - absoluteStartIndex;
 
         drawings = drawings.filter(d => !d.type.startsWith('position'));
         selectedDrawing = null;
@@ -159,12 +164,12 @@ if (document.getElementById('btn-start-sim')) {
         const btnSetReplay = document.getElementById('btn-set-replay');
         if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
 
-        currentReplayIndex = startIdx - absoluteStartIndex;
-        series.setData(fullData);
+        // PENTING: Potong data masa depan agar tidak terlihat!
+        series.setData(fullData.slice(0, currentReplayIndex + 1));
         
         if (chart) {
-            let lookbackIdxInFull = Math.max(0, currentReplayIndex - currentChunkSize);
-            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdxInFull, to: currentReplayIndex + 20 });
+            let lookbackIdx = Math.max(0, currentReplayIndex - currentChunkSize);
+            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: currentReplayIndex + 20 });
         }
 
         if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
@@ -178,8 +183,8 @@ document.addEventListener('click', () => {
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
 
+// --- FUNGSI RENDER DASHBOARD HISTORY ---
 function renderHistoryDashboard() {
-    // (Fungsi Dashboard tetap sama seperti sebelumnya)
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
     let winTrades = tradeHistory.filter(t => t.status === 'WIN').length;
