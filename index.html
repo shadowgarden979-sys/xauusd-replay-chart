@@ -22,8 +22,10 @@
         #date-hud {
             position: absolute; top: 10px; left: 10px; background: rgba(43, 43, 67, 0.9);
             color: #d1d4dc; padding: 4px 8px; border-radius: 4px; font-size: 11px;
-            z-index: 5; pointer-events: none; border: 1px solid #485c7b;
+            z-index: 5; pointer-events: auto; border: 1px solid #485c7b; cursor: pointer;
+            transition: background 0.2s;
         }
+        #date-hud:hover { background: rgba(43, 43, 67, 1); }
 
         #scissors-line {
             position: absolute; top: 0; bottom: 0; width: 2px; background-color: #2962FF; 
@@ -78,17 +80,26 @@
         .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
         .snap-active { background-color: #2962FF !important; color: white; }
 
-        /* CSS UNTUK SEMUA MODAL */
-        #modal-overlay, #setup-modal-overlay, #history-modal-overlay, #summary-modal-overlay {
+        /* Tombol Jump to Latest */
+        #btn-jump-latest {
+            position: absolute; bottom: 20px; right: 20px; z-index: 20; 
+            background: #2962FF; color: white; border: none; border-radius: 50%; 
+            width: 40px; height: 40px; font-size: 18px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); 
+            cursor: pointer; display: none; justify-content: center; align-items: center;
+        }
+        #btn-jump-latest:hover { background: #1E4BD8; }
+
+        /* CSS Modal */
+        #modal-overlay, #setup-modal-overlay, #history-modal-overlay, #summary-modal-overlay, #goto-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
             z-index: 100; display: none; justify-content: center; align-items: center;
         }
-        #modal-content, #setup-modal-content, #history-modal-content, #summary-modal-content {
+        #modal-content, #setup-modal-content, #history-modal-content, #summary-modal-content, #goto-modal-content {
             background: #2B2B43; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px;
             color: white; display: flex; flex-direction: column; gap: 10px;
         }
-        #modal-content label, #setup-modal-content label { font-size: 12px; color: #d1d4dc; }
-        #modal-content input, #setup-modal-content input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
+        #modal-content label, #setup-modal-content label, #goto-modal-content label { font-size: 12px; color: #d1d4dc; }
+        #modal-content input, #setup-modal-content input, #goto-modal-content select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         
         /* CSS Dashboard & Summary */
@@ -183,6 +194,9 @@
             <div id="scissors-icon">✂</div>
             <div id="scissors-time">-</div>
         </div>
+
+        <!-- Tombol Jump to Latest -->
+        <button id="btn-jump-latest" title="Lompat ke Data Terbaru">⏭</button>
     </div>
 
     <!-- REPLAY PANEL -->
@@ -247,6 +261,23 @@
         </div>
     </div>
 
+    <!-- MODAL GO TO DATE -->
+    <div id="goto-modal-overlay">
+        <div id="goto-modal-content">
+            <h3 style="margin:0;">Lompat ke Tanggal</h3>
+            <label>Tahun:</label>
+            <select id="goto-year"></select>
+            <label>Bulan:</label>
+            <select id="goto-month"></select>
+            <label>Tanggal:</label>
+            <select id="goto-day"></select>
+            <div class="modal-btns">
+                <button class="btn" id="btn-close-goto">Batal</button>
+                <button class="btn" id="btn-confirm-goto" style="background:#2962FF;">Lompat</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL SUMMARY AKHIR SESI -->
     <div id="summary-modal-overlay">
         <div id="summary-modal-content" style="text-align: center;">
@@ -276,7 +307,7 @@
                 <div>Max Win Streak <span id="dash-streak" style="color:#26a69a;">$0.00</span></div>
             </div>
 
-            <!-- Baris Detail Statistik (Total Trade, TP, SL, Avg) -->
+            <!-- Baris Detail Statistik -->
             <div class="stats-detail-row">
                 <div>Trade <span id="dash-total-trade" style="color:#d1d4dc;">0</span></div>
                 <div>Win Rate <span id="dash-winrate" style="color:#26a69a;">0%</span></div>
@@ -285,7 +316,7 @@
                 <div>Avg (D/M/Y) <span id="dash-avg" style="color:#d1d4dc;">0 / 0 / 0</span></div>
             </div>
 
-            <!-- Kotak Rekap Bulanan (Opsi A) -->
+            <!-- Kotak Rekap Bulanan -->
             <div style="background: #1e1e1e; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; margin-bottom: 10px;">
                 <div style="font-size:11px; color:#d1d4dc; margin-bottom:4px;">Rincian Trade per Bulan:</div>
                 <div id="dash-monthly"></div>
@@ -308,9 +339,7 @@
                             <th>PnL</th>
                         </tr>
                     </thead>
-                    <tbody id="history-table-body">
-                        <!-- Diisi via JS -->
-                    </tbody>
+                    <tbody id="history-table-body"></tbody>
                 </table>
             </div>
 
