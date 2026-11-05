@@ -119,45 +119,72 @@ async function loadTFData(newTF) {
 }
 
 function applyTFChange(newTF, currentReplayTime) {
+    let oldRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
+    
     currentTF = newTF;
     
-    if (isReplayMode && currentReplayTime !== null) {
-        // Cari index baru di allData TF baru
-        let sourceData = allData[currentTF];
-        let newIdx = 0;
-        let left = 0, right = sourceData.length - 1;
-        while (left <= right) {
-            let mid = Math.floor((left + right) / 2);
-            if (sourceData[mid].time >= currentReplayTime) {
-                newIdx = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
+    if (currentMode === 'backtest') {
+        if (oldRange && fullData.length > 0) {
+            let timeLeft = fullData[Math.max(0, Math.floor(oldRange.from))].time;
+            let timeRight = fullData[Math.min(fullData.length-1, Math.ceil(oldRange.to))].time;
+            
+            let sourceData = allData[currentTF];
+            let idxLeft = 0, idxRight = sourceData.length-1;
+            let left = 0, right = sourceData.length - 1;
+            
+            while (left <= right) {
+                let mid = Math.floor((left + right) / 2);
+                if (sourceData[mid].time >= timeLeft) { idxLeft = mid; right = mid - 1; } else { left = mid + 1; }
             }
+            left = 0; right = sourceData.length - 1;
+            while (left <= right) {
+                let mid = Math.floor((left + right) / 2);
+                if (sourceData[mid].time <= timeRight) { idxRight = mid; left = mid + 1; } else { right = mid - 1; }
+            }
+            
+            backtestStartIndex = Math.max(0, idxLeft - (backtestChunkSize / 2));
+            fullData = sourceData.slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
+            series.setData(fullData);
+            
+            let newFrom = Math.max(0, idxLeft - backtestStartIndex);
+            let newTo = Math.min(fullData.length - 1, idxRight - backtestStartIndex);
+            chart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo });
+        } else {
+            backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
+            fullData = allData[currentTF].slice(backtestStartIndex);
+            series.setData(fullData);
+            chart.timeScale().scrollToRealTime();
         }
-        
-        // CHUNKING UNTUK PINDAH TF
-        currentChunkSize = chunkSizes[currentTF] || 6000;
-        absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
-        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
-        
-        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-        currentReplayIndex = newIdx - absoluteStartIndex;
-        
-        series.setData(fullData.slice(0, currentReplayIndex + 1)); // Sembunyikan masa depan
-        chart.timeScale().fitContent();
-        
-    } else if (isReplayMode && currentReplayTime === null) {
-        currentChunkSize = chunkSizes[currentTF] || 6000;
-        absoluteStartIndex = Math.max(0, allData[currentTF].length - (currentChunkSize * 3));
-        fullData = allData[currentTF].slice(absoluteStartIndex);
-        currentReplayIndex = fullData.length - 1;
-        
-        series.setData(fullData);
     } else {
-        fullData = allData[currentTF];
-        currentReplayIndex = fullData.length - 1;
-        series.setData(fullData);
+        if (isReplayMode && currentReplayTime !== null) {
+            let sourceData = allData[currentTF];
+            let newIdx = 0;
+            let left = 0, right = sourceData.length - 1;
+            while (left <= right) {
+                let mid = Math.floor((left + right) / 2);
+                if (sourceData[mid].time >= currentReplayTime) { newIdx = mid; right = mid - 1; } else { left = mid + 1; }
+            }
+            
+            currentChunkSize = chunkSizes[currentTF] || 6000;
+            absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
+            let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+            
+            fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+            currentReplayIndex = newIdx - absoluteStartIndex;
+            
+            series.setData(fullData.slice(0, currentReplayIndex + 1));
+            chart.timeScale().fitContent();
+        } else if (isReplayMode && currentReplayTime === null) {
+            currentChunkSize = chunkSizes[currentTF] || 6000;
+            absoluteStartIndex = Math.max(0, allData[currentTF].length - (currentChunkSize * 3));
+            fullData = allData[currentTF].slice(absoluteStartIndex);
+            currentReplayIndex = fullData.length - 1;
+            series.setData(fullData);
+        } else {
+            fullData = allData[currentTF];
+            currentReplayIndex = fullData.length - 1;
+            series.setData(fullData);
+        }
     }
 
     if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
@@ -188,7 +215,6 @@ async function initApp() {
         text.innerText = pct + '%';
     });
     allData['M15'] = []; allData['H1'] = []; allData['H4'] = [];
-    fullData = allData['M5'];
 
     container = document.getElementById('chart-container');
     chart = LightweightCharts.createChart(container, {
@@ -207,10 +233,12 @@ async function initApp() {
         wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     });
 
-    let initialReplayIndex = Math.max(0, fullData.length - 100);
-    currentReplayIndex = initialReplayIndex;
-    series.setData(fullData.slice(0, initialReplayIndex));
-    chart.timeScale().setVisibleLogicalRange({ from: initialReplayIndex - 50, to: initialReplayIndex + 10 });
+    // Initial Backtest Load
+    backtestStartIndex = Math.max(0, allData['M5'].length - (backtestChunkSize * 3));
+    fullData = allData['M5'].slice(backtestStartIndex);
+    currentReplayIndex = fullData.length - 1;
+    series.setData(fullData);
+    chart.timeScale().scrollToRealTime();
 
     bgCanvas = document.getElementById('bg-canvas');
     bgCtx = bgCanvas.getContext('2d');
@@ -224,6 +252,7 @@ async function initApp() {
         overlay.style.display = 'none';
         if (typeof window.initDrawingEvents === 'function') window.initDrawingEvents();
         if (typeof render === 'function') render();
+        if (typeof updateModeDropdownUI === 'function') updateModeDropdownUI();
     }, 500);
 }
 
