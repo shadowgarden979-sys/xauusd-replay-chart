@@ -6,7 +6,6 @@
 let isLoadingData = false;
 const loadingPromises = {}; 
 
-// Fungsi pembantu untuk mengecek variabel global const dengan aman
 function getGlobalConst(varName) {
     try {
         return new Function('return typeof ' + varName + ' !== "undefined" ? ' + varName + ' : null')();
@@ -38,45 +37,34 @@ async function parseAoAAsync(aoaArray, progressCallback) {
 
 function loadDataScript(tf, year) {
     const varName = `data_${tf}_${year}`;
-    
     const existingData = getGlobalConst(varName);
-    if (existingData) {
-        return Promise.resolve(existingData);
-    }
-    
-    if (loadingPromises[varName]) {
-        return loadingPromises[varName];
-    }
+    if (existingData) return Promise.resolve(existingData);
+    if (loadingPromises[varName]) return loadingPromises[varName];
 
     loadingPromises[varName] = new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = `${varName}.js`;
-        
         script.onload = () => {
             let attempts = 0;
             const checkInterval = setInterval(() => {
                 attempts++;
                 const data = getGlobalConst(varName);
-                
                 if (data) {
                     clearInterval(checkInterval);
                     resolve(data);
                 } else if (attempts > 30) { 
                     clearInterval(checkInterval);
                     delete loadingPromises[varName];
-                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan di dalam file.`));
+                    reject(new Error(`File ${varName}.js diunduh, tapi variabel tidak ditemukan.`));
                 }
             }, 100);
         };
-        
         script.onerror = () => {
             delete loadingPromises[varName];
             reject(new Error(`Gagal mengunduh file ${varName}.js. Pastikan file ada di GitHub.`));
         };
-        
         document.head.appendChild(script);
     });
-
     return loadingPromises[varName];
 }
 
@@ -84,14 +72,11 @@ async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
     if (allData[newTF] && allData[newTF].length > 0) {
-        // PERBAIKAN BUG TF: Tangkap timestamp SEBELUM ganti data
         let currentReplayTime = null;
         if (isReplayMode && fullData.length > 0) {
             let idx = Math.max(0, currentReplayIndex - 1);
             currentReplayTime = fullData[idx] ? fullData[idx].time : null;
         }
-
-        fullData = allData[newTF];
         applyTFChange(newTF, currentReplayTime);
         document.getElementById('btn-tf').innerText = newTF + ' ▼';
         return;
@@ -110,20 +95,17 @@ async function loadTFData(newTF) {
 
     try {
         const rawData = await loadDataScript(newTF, 2012);
-        
         allData[newTF] = await parseAoAAsync(rawData, (pct) => {
             bar.style.width = pct + '%';
             text.innerText = `Memuat ${newTF}... ${pct}%`;
         });
         
-        // PERBAIKAN BUG TF: Tangkap timestamp dari TF lama sebelum fullData ditimpa
         let currentReplayTime = null;
         if (isReplayMode && fullData.length > 0) {
             let idx = Math.max(0, currentReplayIndex - 1);
             currentReplayTime = fullData[idx] ? fullData[idx].time : null;
         }
 
-        fullData = allData[newTF];
         applyTFChange(newTF, currentReplayTime);
         btnTF.innerText = newTF + ' ▼'; 
         
@@ -136,37 +118,50 @@ async function loadTFData(newTF) {
     }
 }
 
-// PERBAIKAN BUG TF: Menerima parameter currentReplayTime dari TF lama
 function applyTFChange(newTF, currentReplayTime) {
     currentTF = newTF;
     
     if (isReplayMode && currentReplayTime !== null) {
-        // Binary Search berbasis Timestamp untuk mencari index yang tepat di TF baru
+        // Cari index baru di allData TF baru
+        let sourceData = allData[currentTF];
         let newIdx = 0;
-        let left = 0, right = fullData.length - 1;
+        let left = 0, right = sourceData.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
-            if (fullData[mid].time >= currentReplayTime) {
+            if (sourceData[mid].time >= currentReplayTime) {
                 newIdx = mid;
                 right = mid - 1;
             } else {
                 left = mid + 1;
             }
         }
-        currentReplayIndex = newIdx;
-        series.setData(fullData.slice(0, currentReplayIndex));
+        
+        // CHUNKING UNTUK PINDAH TF
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
+        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+        currentReplayIndex = newIdx - absoluteStartIndex;
+        
+        series.setData(fullData.slice(0, currentReplayIndex + 1)); // Sembunyikan masa depan
+        chart.timeScale().fitContent();
+        
     } else if (isReplayMode && currentReplayTime === null) {
-        currentReplayIndex = Math.max(0, fullData.length - 100);
-        series.setData(fullData.slice(0, currentReplayIndex));
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, allData[currentTF].length - (currentChunkSize * 3));
+        fullData = allData[currentTF].slice(absoluteStartIndex);
+        currentReplayIndex = fullData.length - 1;
+        
+        series.setData(fullData);
     } else {
+        fullData = allData[currentTF];
         currentReplayIndex = fullData.length - 1;
         series.setData(fullData);
     }
 
     if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
     if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
-    
-    chart.timeScale().fitContent();
 }
 
 async function initApp() {
