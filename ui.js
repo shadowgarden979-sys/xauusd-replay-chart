@@ -28,6 +28,7 @@ const btnMode = document.getElementById('btn-mode');
 const setupModal = document.getElementById('setup-modal-overlay');
 const historyModal = document.getElementById('history-modal-overlay');
 const summaryModal = document.getElementById('summary-modal-overlay');
+const gotoModal = document.getElementById('goto-modal-overlay');
 
 if (btnMode) {
     btnMode.onclick = (e) => {
@@ -40,12 +41,16 @@ if (btnMode) {
 function updateModeDropdownUI() {
     const ddBacktest = document.getElementById('dd-backtest');
     const ddSim = document.getElementById('dd-sim');
+    const btnJumpLatest = document.getElementById('btn-jump-latest');
+    
     if (currentMode === 'simulation' && isSimulationRunning) {
         if (ddBacktest) ddBacktest.style.display = 'none';
         if (ddSim) ddSim.style.display = 'none';
+        if (btnJumpLatest) btnJumpLatest.style.display = 'none';
     } else {
         if (ddBacktest) ddBacktest.style.display = 'block';
         if (ddSim) ddSim.style.display = 'block';
+        if (btnJumpLatest) btnJumpLatest.style.display = currentMode === 'backtest' ? 'flex' : 'none';
     }
 }
 
@@ -74,6 +79,13 @@ if (modeDropdown) {
                     btnMode.innerText = 'MODE ▼';
                     btnMode.style.background = '#485c7b';
                     updateModeDropdownUI();
+                    
+                    // Kembalikan ke backtest chunking
+                    backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
+                    fullData = allData[currentTF].slice(backtestStartIndex);
+                    series.setData(fullData);
+                    chart.timeScale().scrollToRealTime();
+
                     if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
                 }
             }
@@ -82,108 +94,199 @@ if (modeDropdown) {
     });
 }
 
-if (document.getElementById('btn-close-setup')) {
-    document.getElementById('btn-close-setup').onclick = () => { setupModal.style.display = 'none'; };
+// Logika Modal Setup
+document.getElementById('btn-close-setup').onclick = () => { setupModal.style.display = 'none'; };
+document.getElementById('btn-close-history').onclick = () => { historyModal.style.display = 'none'; };
+document.getElementById('btn-sum-close').onclick = () => { summaryModal.style.display = 'none'; };
+document.getElementById('btn-sum-detail').onclick = () => { 
+    summaryModal.style.display = 'none'; 
+    historyModal.style.display = 'flex';
+    setTimeout(renderHistoryDashboard, 50); 
+};
+document.getElementById('btn-close-goto').onclick = () => { gotoModal.style.display = 'none'; };
+
+// Logika Go To Date
+document.getElementById('date-hud').onclick = () => {
+    if (currentMode !== 'backtest') {
+        alert("Fitur ini hanya tersedia di Mode Backtest.");
+        return;
+    }
+    gotoModal.style.display = 'flex';
+    populateGotoYears();
+};
+
+function populateGotoYears() {
+    let years = new Set();
+    allData[currentTF].forEach(c => {
+        let d = new Date(c.time * 1000);
+        years.add(d.getUTCFullYear());
+    });
+    
+    let yearSelect = document.getElementById('goto-year');
+    yearSelect.innerHTML = '';
+    Array.from(years).sort().forEach(y => {
+        let opt = document.createElement('option');
+        opt.value = y; opt.innerText = y;
+        yearSelect.appendChild(opt);
+    });
+    populateGotoMonths();
 }
-if (document.getElementById('btn-close-history')) {
-    document.getElementById('btn-close-history').onclick = () => { historyModal.style.display = 'none'; };
+
+function populateGotoMonths() {
+    let year = parseInt(document.getElementById('goto-year').value);
+    let months = new Set();
+    allData[currentTF].forEach(c => {
+        let d = new Date(c.time * 1000);
+        if (d.getUTCFullYear() === year) months.add(d.getUTCMonth() + 1);
+    });
+    
+    let monthSelect = document.getElementById('goto-month');
+    monthSelect.innerHTML = '';
+    let monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    Array.from(months).sort((a,b)=>a-b).forEach(m => {
+        let opt = document.createElement('option');
+        opt.value = m; opt.innerText = monthNames[m-1];
+        monthSelect.appendChild(opt);
+    });
+    populateGotoDays();
 }
-if (document.getElementById('btn-sum-close')) {
-    document.getElementById('btn-sum-close').onclick = () => { summaryModal.style.display = 'none'; };
+
+function populateGotoDays() {
+    let year = parseInt(document.getElementById('goto-year').value);
+    let month = parseInt(document.getElementById('goto-month').value);
+    let days = new Set();
+    allData[currentTF].forEach(c => {
+        let d = new Date(c.time * 1000);
+        if (d.getUTCFullYear() === year && (d.getUTCMonth()+1) === month) {
+            days.add(d.getUTCDate());
+        }
+    });
+    
+    let daySelect = document.getElementById('goto-day');
+    daySelect.innerHTML = '';
+    Array.from(days).sort((a,b)=>a-b).forEach(d => {
+        let opt = document.createElement('option');
+        opt.value = d; opt.innerText = d;
+        daySelect.appendChild(opt);
+    });
 }
-if (document.getElementById('btn-sum-detail')) {
-    document.getElementById('btn-sum-detail').onclick = () => { 
-        summaryModal.style.display = 'none'; 
-        historyModal.style.display = 'flex';
-        setTimeout(renderHistoryDashboard, 50); 
-    };
-}
 
-// --- LOGIKA TIME JUMP ---
-if (document.getElementById('btn-start-sim')) {
-    document.getElementById('btn-start-sim').onclick = () => {
-        let startDateStr = document.getElementById('sim-start-date').value;
-        let endDateStr = document.getElementById('sim-end-date').value;
-        let bal = parseFloat(document.getElementById('sim-balance').value);
-        let risk = parseFloat(document.getElementById('sim-risk').value);
+document.getElementById('goto-year').onchange = populateGotoMonths;
+document.getElementById('goto-month').onchange = populateGotoDays;
 
-        if (!startDateStr || !endDateStr || isNaN(bal) || isNaN(risk)) {
-            alert("Harap isi semua data dengan benar!");
-            return;
+document.getElementById('btn-confirm-goto').onclick = () => {
+    let year = document.getElementById('goto-year').value;
+    let month = document.getElementById('goto-month').value.toString().padStart(2, '0');
+    let day = document.getElementById('goto-day').value.toString().padStart(2, '0');
+    let dateStr = `${year}-${month}-${day}T00:00:00Z`;
+    let targetTs = Math.floor(new Date(dateStr).getTime() / 1000);
+    
+    let targetIdx = 0;
+    let sourceData = allData[currentTF];
+    let left = 0, right = sourceData.length - 1;
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        if (sourceData[mid].time >= targetTs) {
+            targetIdx = mid; right = mid - 1;
+        } else { left = mid + 1; }
+    }
+    
+    backtestStartIndex = Math.max(0, targetIdx - (backtestChunkSize / 2));
+    fullData = sourceData.slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
+    series.setData(fullData);
+    
+    let newIdx = targetIdx - backtestStartIndex;
+    chart.timeScale().setVisibleLogicalRange({ from: newIdx - 50, to: newIdx + 50 });
+    gotoModal.style.display = 'none';
+};
+
+// Logika Jump to Latest
+document.getElementById('btn-jump-latest').onclick = () => {
+    if (currentMode !== 'backtest') return;
+    backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
+    fullData = allData[currentTF].slice(backtestStartIndex);
+    series.setData(fullData);
+    chart.timeScale().scrollToRealTime();
+};
+
+// Logika Setup Simulasi
+document.getElementById('btn-start-sim').onclick = () => {
+    let startDateStr = document.getElementById('sim-start-date').value;
+    let endDateStr = document.getElementById('sim-end-date').value;
+    let bal = parseFloat(document.getElementById('sim-balance').value);
+    let risk = parseFloat(document.getElementById('sim-risk').value);
+
+    if (!startDateStr || !endDateStr || isNaN(bal) || isNaN(risk)) {
+        alert("Harap isi semua data dengan benar!");
+        return;
+    }
+    
+    let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
+    let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
+
+    if (startTs >= endTs) {
+        alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
+        return;
+    }
+
+    let sourceData = allData[currentTF];
+    let startIdx = -1;
+    let left = 0, right = sourceData.length - 1;
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        if (sourceData[mid].time >= startTs) {
+            startIdx = mid;
+            right = mid - 1;
+        } else {
+            left = mid + 1;
         }
-        
-        let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
-        let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
+    }
+    if (startIdx === -1) startIdx = sourceData.length - 1;
 
-        if (startTs >= endTs) {
-            alert("Tanggal Mulai harus lebih awal dari Tanggal Selesai!");
-            return;
-        }
+    currentChunkSize = chunkSizes[currentTF] || 6000;
+    absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); 
+    let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+    
+    fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+    currentReplayIndex = startIdx - absoluteStartIndex;
 
-        // Cari start index di allData
-        let sourceData = allData[currentTF];
-        let startIdx = -1;
-        let left = 0, right = sourceData.length - 1;
-        while (left <= right) {
-            let mid = Math.floor((left + right) / 2);
-            if (sourceData[mid].time >= startTs) {
-                startIdx = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
-        }
-        if (startIdx === -1) startIdx = sourceData.length - 1;
+    drawings = drawings.filter(d => !d.type.startsWith('position'));
+    selectedDrawing = null;
+    if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
-        // INISIALISASI CHUNKING (Jendela 3 Chunk)
-        currentChunkSize = chunkSizes[currentTF] || 6000;
-        
-        // Lookback 1 Chunk, Start, Future 1 Chunk
-        absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); 
-        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
-        
-        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-        currentReplayIndex = startIdx - absoluteStartIndex;
+    if (typeof simConfig !== 'undefined') {
+        simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
+    }
+    if (typeof currentMode !== 'undefined') currentMode = 'simulation';
+    
+    btnMode.innerText = 'SIMULASI ▼';
+    btnMode.style.background = '#26a69a';
+    setupModal.style.display = 'none';
 
-        drawings = drawings.filter(d => !d.type.startsWith('position'));
-        selectedDrawing = null;
-        if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+    if (typeof isReplayMode !== 'undefined') isReplayMode = true;
+    if (typeof isPlaying !== 'undefined') isPlaying = false;
+    
+    const btnSetReplay = document.getElementById('btn-set-replay');
+    if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
 
-        if (typeof simConfig !== 'undefined') {
-            simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
-        }
-        if (typeof currentMode !== 'undefined') currentMode = 'simulation';
-        
-        btnMode.innerText = 'SIMULASI ▼';
-        btnMode.style.background = '#26a69a';
-        setupModal.style.display = 'none';
+    series.setData(fullData.slice(0, currentReplayIndex + 1));
+    
+    if (chart) {
+        let lookbackIdx = Math.max(0, currentReplayIndex - currentChunkSize);
+        chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: currentReplayIndex + 20 });
+    }
 
-        if (typeof isReplayMode !== 'undefined') isReplayMode = true;
-        if (typeof isPlaying !== 'undefined') isPlaying = false;
-        
-        const btnSetReplay = document.getElementById('btn-set-replay');
-        if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
-
-        // PENTING: Potong data masa depan agar tidak terlihat!
-        series.setData(fullData.slice(0, currentReplayIndex + 1));
-        
-        if (chart) {
-            let lookbackIdx = Math.max(0, currentReplayIndex - currentChunkSize);
-            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: currentReplayIndex + 20 });
-        }
-
-        if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
-        if (typeof startSimulation === 'function') startSimulation();
-        updateModeDropdownUI();
-    };
-}
+    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+    if (typeof startSimulation === 'function') startSimulation();
+    updateModeDropdownUI();
+};
 
 document.addEventListener('click', () => { 
     tfDropdown.style.display = 'none'; 
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
 
-// --- FUNGSI RENDER DASHBOARD HISTORY ---
+// (FUNGSI renderHistoryDashboard DIAMBIL DARI VERSI SEBELUMNYA YANG SUDAH LENGKAP)
 function renderHistoryDashboard() {
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
