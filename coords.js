@@ -11,7 +11,6 @@ function getTFSeconds(tf) {
     return 300;
 }
 
-// Fungsi krusial: Mencari candle terdekat menggunakan Binary Search
 function getClosestTime(time) {
     if (time === null || time === undefined || fullData.length === 0) return null;
     
@@ -40,7 +39,6 @@ function getClosestTime(time) {
     return fullData[closestIdx].time;
 }
 
-// Diperbarui: Mendukung ekstrapolasi ke masa depan (area kosong)
 function getX(time) { 
     if (time === null || time === undefined || !chart) return null;
     
@@ -52,7 +50,6 @@ function getX(time) {
         const closest = getClosestTime(time);
         return closest !== null ? chart.timeScale().timeToCoordinate(closest) : null;
     } else {
-        // Ekstrapolasi X ke area masa depan
         let lastX = chart.timeScale().timeToCoordinate(lastValidTime);
         if (lastX === null) return null;
         
@@ -68,7 +65,6 @@ function getY(price) {
     return series.priceToCoordinate(price); 
 }
 
-// Diperbarui: Mendukung ekstrapolasi waktu dari area kosong
 function getTimeFromX(x) {
     if (!chart) return null;
     
@@ -78,7 +74,6 @@ function getTimeFromX(x) {
     let lastX = chart.timeScale().timeToCoordinate(lastValidTime);
     
     if (lastX !== null && x > lastX) {
-        // Hitung waktu di masa depan berdasarkan jarak X
         let barSpacing = chart.timeScale().options().barSpacing || 8;
         let barsAhead = (x - lastX) / barSpacing;
         let tfSec = getTFSeconds(currentTF);
