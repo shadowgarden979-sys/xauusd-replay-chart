@@ -61,7 +61,7 @@ function loadDataScript(tf, year) {
         };
         script.onerror = () => {
             delete loadingPromises[varName];
-            reject(new Error(`Gagal mengunduh file ${varName}.js. Pastikan file ada di GitHub.`));
+            reject(new Error(`Gagal mengunduh file ${varName}.js.`));
         };
         document.head.appendChild(script);
     });
@@ -71,17 +71,9 @@ function loadDataScript(tf, year) {
 async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
-    if (allData[newTF] && allData[newTF].length > 0) {
-        let currentReplayTime = null;
-        if (isReplayMode && fullData.length > 0) {
-            let idx = Math.max(0, currentReplayIndex - 1);
-            currentReplayTime = fullData[idx] ? fullData[idx].time : null;
-        }
-        applyTFChange(newTF, currentReplayTime);
-        document.getElementById('btn-tf').innerText = newTF + ' ▼';
-        return;
-    }
-
+    // Saat ganti TF, kita muat tahun terbaru yang tersedia untuk TF tersebut
+    let targetYear = Math.max(...availableYears[newTF]);
+    
     const overlay = document.getElementById('loading-overlay');
     const bar = document.getElementById('loading-bar');
     const text = document.getElementById('loading-text');
@@ -94,19 +86,18 @@ async function loadTFData(newTF) {
     text.innerText = `Memuat ${newTF}...`;
 
     try {
-        const rawData = await loadDataScript(newTF, 2012);
+        const rawData = await loadDataScript(newTF, targetYear);
         allData[newTF] = await parseAoAAsync(rawData, (pct) => {
             bar.style.width = pct + '%';
-            text.innerText = `Memuat ${newTF}... ${pct}%`;
+            text.innerText = `Memuat ${newTF} ${targetYear}... ${pct}%`;
         });
         
-        let currentReplayTime = null;
-        if (isReplayMode && fullData.length > 0) {
-            let idx = Math.max(0, currentReplayIndex - 1);
-            currentReplayTime = fullData[idx] ? fullData[idx].time : null;
-        }
-
-        applyTFChange(newTF, currentReplayTime);
+        currentTF = newTF;
+        backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
+        fullData = allData[currentTF].slice(backtestStartIndex);
+        series.setData(fullData);
+        chart.timeScale().scrollToRealTime();
+        
         btnTF.innerText = newTF + ' ▼'; 
         
     } catch (err) {
@@ -118,102 +109,35 @@ async function loadTFData(newTF) {
     }
 }
 
-function applyTFChange(newTF, currentReplayTime) {
-    let oldRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
-    
-    currentTF = newTF;
-    
-    if (currentMode === 'backtest') {
-        if (oldRange && fullData.length > 0) {
-            let timeLeft = fullData[Math.max(0, Math.floor(oldRange.from))].time;
-            let timeRight = fullData[Math.min(fullData.length-1, Math.ceil(oldRange.to))].time;
-            
-            let sourceData = allData[currentTF];
-            let idxLeft = 0, idxRight = sourceData.length-1;
-            let left = 0, right = sourceData.length - 1;
-            
-            while (left <= right) {
-                let mid = Math.floor((left + right) / 2);
-                if (sourceData[mid].time >= timeLeft) { idxLeft = mid; right = mid - 1; } else { left = mid + 1; }
-            }
-            left = 0; right = sourceData.length - 1;
-            while (left <= right) {
-                let mid = Math.floor((left + right) / 2);
-                if (sourceData[mid].time <= timeRight) { idxRight = mid; left = mid + 1; } else { right = mid - 1; }
-            }
-            
-            backtestStartIndex = Math.max(0, idxLeft - (backtestChunkSize / 2));
-            fullData = sourceData.slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
-            series.setData(fullData);
-            
-            let newFrom = Math.max(0, idxLeft - backtestStartIndex);
-            let newTo = Math.min(fullData.length - 1, idxRight - backtestStartIndex);
-            chart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo });
-        } else {
-            backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
-            fullData = allData[currentTF].slice(backtestStartIndex);
-            series.setData(fullData);
-            chart.timeScale().scrollToRealTime();
-        }
-    } else {
-        if (isReplayMode && currentReplayTime !== null) {
-            let sourceData = allData[currentTF];
-            let newIdx = 0;
-            let left = 0, right = sourceData.length - 1;
-            while (left <= right) {
-                let mid = Math.floor((left + right) / 2);
-                if (sourceData[mid].time >= currentReplayTime) { newIdx = mid; right = mid - 1; } else { left = mid + 1; }
-            }
-            
-            currentChunkSize = chunkSizes[currentTF] || 6000;
-            absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
-            let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
-            
-            fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-            currentReplayIndex = newIdx - absoluteStartIndex;
-            
-            series.setData(fullData.slice(0, currentReplayIndex + 1));
-            chart.timeScale().fitContent();
-        } else if (isReplayMode && currentReplayTime === null) {
-            currentChunkSize = chunkSizes[currentTF] || 6000;
-            absoluteStartIndex = Math.max(0, allData[currentTF].length - (currentChunkSize * 3));
-            fullData = allData[currentTF].slice(absoluteStartIndex);
-            currentReplayIndex = fullData.length - 1;
-            series.setData(fullData);
-        } else {
-            fullData = allData[currentTF];
-            currentReplayIndex = fullData.length - 1;
-            series.setData(fullData);
-        }
-    }
-
-    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
-    if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
-}
-
 async function initApp() {
     const overlay = document.getElementById('loading-overlay');
     const bar = document.getElementById('loading-bar');
     const text = document.getElementById('loading-text');
 
-    allRawData['M5'] = getGlobalConst('data_M5_2012') || [];
-    allRawData['M15'] = null;
-    allRawData['H1'] = null;
-    allRawData['H4'] = null;
-
     if (typeof LightweightCharts === 'undefined') {
         document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: Library Chart Gagal Dimuat.</h2>';
         return;
     }
-    if (allRawData['M5'].length === 0) {
-        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: File data_M5_2012.js gagal dimuat atau kosong.</h2>';
+    if (typeof availableYears === 'undefined' || !availableYears['M5'] || availableYears['M5'].length === 0) {
+        document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Error: File data_index.js gagal dimuat atau tidak valid.</h2>';
         return;
     }
 
-    allData['M5'] = await parseAoAAsync(allRawData['M5'], (pct) => {
-        bar.style.width = pct + '%';
-        text.innerText = pct + '%';
-    });
+    // Muat tahun terbaru secara otomatis
+    let latestYear = Math.max(...availableYears['M5']);
+    text.innerText = `Memuat Data Awal (${latestYear})...`;
+
+    try {
+        const rawData = await loadDataScript('M5', latestYear);
+        allData['M5'] = await parseAoAAsync(rawData, (pct) => {
+            bar.style.width = pct + '%';
+            text.innerText = pct + '%';
+        });
+    } catch (err) {
+        document.body.innerHTML = `<h2 style="color:red; text-align:center; margin-top:50px;">Error: ${err.message}</h2>`;
+        return;
+    }
+    
     allData['M15'] = []; allData['H1'] = []; allData['H4'] = [];
 
     container = document.getElementById('chart-container');
