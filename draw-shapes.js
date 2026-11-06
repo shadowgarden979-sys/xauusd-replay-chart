@@ -33,7 +33,8 @@ function updateDateHUD() {
 }
 
 function drawWarnings() {
-    let limit = isReplayMode ? currentReplayIndex - 1 : fullData.length - 1;
+    // PERBAIKAN: Batasi limit agar tidak melebihi fullData.length
+    let limit = isReplayMode ? Math.min(currentReplayIndex - 1, fullData.length - 1) : fullData.length - 1;
     if (limit < 0 || !chart) return;
 
     let range = chart.timeScale().getVisibleLogicalRange();
@@ -47,6 +48,8 @@ function drawWarnings() {
         
         for (let i = 0; i <= limit; i++) {
             let c = fullData[i];
+            if (!c) continue; // Pengaman ganda
+            
             let d = new Date(c.time * 1000);
             let day = d.getUTCDay(); 
             let hours = d.getUTCHours();
@@ -191,7 +194,6 @@ function drawPositionBg(d) {
     let baseOp = d.baseOpacity !== undefined ? d.baseOpacity : 0.1;
     let activeOp = d.activeOpacity !== undefined ? d.activeOpacity : 0.4;
     
-    // PERBAIKAN: Opacity redup diubah menjadi 0.1
     if (isClosed) { baseOp = 0.1; activeOp = 0.1; }
     else if (isPending) { baseOp = 0.05; activeOp = 0.2; }
 
