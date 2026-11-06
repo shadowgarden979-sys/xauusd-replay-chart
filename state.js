@@ -51,12 +51,13 @@ let simRiskPercent = 1;
 let tradeHistory = [];
 let isSimulationRunning = false;
 
-// CHUNKING SIMULASI
 let chunkSizes = { 'M1': 30000, 'M5': 6000, 'M15': 2000, 'H1': 500, 'H4': 125 };
 let currentChunkSize = 6000; 
 let absoluteStartIndex = 0; 
 
-// CHUNKING BACKTEST
 let backtestChunkSize = 10000;
 let backtestStartIndex = 0;
 let isShiftingData = false;
+
+// VARIABEL BARU UNTUK SINKRONISASI WAKTU
+let simulationCurrentTime = null;
