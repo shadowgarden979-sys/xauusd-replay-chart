@@ -103,7 +103,7 @@ document.getElementById('btn-sum-detail').onclick = () => {
 };
 document.getElementById('btn-close-goto').onclick = () => { gotoModal.style.display = 'none'; };
 
-// --- LOGIKA GO TO DATE (LAZY LOAD) ---
+// --- LOGIKA GO TO DATE ---
 let tempGotoData = null;
 
 document.getElementById('date-hud').onclick = () => {
@@ -126,7 +126,6 @@ function populateGotoYears() {
         yearSelect.appendChild(opt);
     });
     
-    // Trigger change untuk memuat bulan pertama
     if (years.length > 0) {
         yearSelect.dispatchEvent(new Event('change'));
     }
@@ -145,7 +144,6 @@ async function populateGotoMonths() {
     monthSelect.innerHTML = '<option>Memuat...</option>';
     daySelect.innerHTML = '';
     
-    // Cek apakah tahun ini sudah ada di memori (allData) atau di cache tempGotoData
     if (tempGotoData && tempGotoData.year === year) {
         fillGotoMonths(tempGotoData.data);
         return;
@@ -155,7 +153,6 @@ async function populateGotoMonths() {
     try {
         const rawData = await loadDataScript(currentTF, year);
         const parsedData = await parseAoAAsync(rawData);
-        
         tempGotoData = { year: year, data: parsedData };
         fillGotoMonths(parsedData);
     } catch (err) {
@@ -169,7 +166,6 @@ async function populateGotoMonths() {
 function fillGotoMonths(dataArr) {
     let monthSelect = document.getElementById('goto-month');
     let months = new Set();
-    
     dataArr.forEach(c => {
         let d = new Date(c.time * 1000);
         months.add(d.getUTCMonth() + 1);
@@ -178,7 +174,6 @@ function fillGotoMonths(dataArr) {
     monthSelect.innerHTML = '';
     monthSelect.disabled = false;
     let monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    
     Array.from(months).sort((a,b)=>a-b).forEach(m => {
         let opt = document.createElement('option');
         opt.value = m; opt.innerText = monthNames[m-1];
@@ -205,7 +200,6 @@ function populateGotoDays() {
     daySelect.innerHTML = '';
     daySelect.disabled = false;
     btnConfirm.disabled = false;
-    
     Array.from(days).sort((a,b)=>a-b).forEach(d => {
         let opt = document.createElement('option');
         opt.value = d; opt.innerText = d;
@@ -223,7 +217,6 @@ document.getElementById('btn-confirm-goto').onclick = () => {
     let dateStr = `${year}-${month}-${day}T00:00:00Z`;
     let targetTs = Math.floor(new Date(dateStr).getTime() / 1000);
     
-    // Set data utama ke tahun yang dipilih
     allData[currentTF] = tempGotoData.data;
     
     let targetIdx = 0;
@@ -247,7 +240,6 @@ document.getElementById('btn-confirm-goto').onclick = () => {
 // Logika Jump to Latest
 document.getElementById('btn-jump-latest').onclick = () => {
     if (currentMode !== 'backtest') return;
-    // Memuat tahun terbaru
     let latestYear = Math.max(...availableYears[currentTF]);
     if (allData[currentTF].length > 0 && new Date(allData[currentTF][0].time * 1000).getUTCFullYear() === latestYear) {
         backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
@@ -255,14 +247,12 @@ document.getElementById('btn-jump-latest').onclick = () => {
         series.setData(fullData);
         chart.timeScale().scrollToRealTime();
     } else {
-        // Jika belum di memori, kita harus memuat (tapi idealnya user pakai Go To Date untuk ini)
         alert("Data tahun terbaru (" + latestYear + ") belum dimuat. Gunakan fitur 'Go To Date'.");
     }
 };
 
 // Logika Setup Simulasi
 document.getElementById('btn-start-sim').onclick = () => {
-    // ... (SAMA SEPERTI SEBELUMNYA, memotong data berdasarkan tanggal)
     let startDateStr = document.getElementById('sim-start-date').value;
     let endDateStr = document.getElementById('sim-end-date').value;
     let bal = parseFloat(document.getElementById('sim-balance').value);
@@ -292,6 +282,11 @@ document.getElementById('btn-start-sim').onclick = () => {
     
     fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
     currentReplayIndex = startIdx - absoluteStartIndex;
+
+    // SET WAKTU PRESISI SAAT SIMULASI DIMULAI
+    if (fullData[currentReplayIndex - 1]) {
+        simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+    }
 
     drawings = drawings.filter(d => !d.type.startsWith('position'));
     selectedDrawing = null;
@@ -329,9 +324,7 @@ document.addEventListener('click', () => {
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
 
-// (FUNGSI renderHistoryDashboard DAN LAINNYA TETAP SAMA)
-// [SILAKAN GUNAKAN FUNGSI renderHistoryDashboard DARI VERSI SEBELUMNYA]
-// Saya akan memastikan kode di bawah ini utuh.
+// [FUNGSI renderHistoryDashboard, FLOATING MENU, DAN LAINNYA TETAP SAMA]
 function renderHistoryDashboard() {
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
