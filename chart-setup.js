@@ -68,10 +68,63 @@ function loadDataScript(tf, year) {
     return loadingPromises[varName];
 }
 
+// FUNGSI BARU: Memotong Candle Terakhir agar Tidak Mengintip Masa Depan
+function truncateLastCandle(dataArr, currentTime, tf) {
+    if (dataArr.length === 0) return dataArr;
+    let last = dataArr[dataArr.length - 1];
+    let tfSec = getTFSeconds(tf);
+    
+    // Jika candle sudah tutup sepenuhnya, tidak perlu dipotong
+    if (last.time + tfSec <= currentTime) return dataArr; 
+    
+    // Jika candle berada di masa depan (seharusnya tidak terjadi)
+    if (last.time > currentTime) {
+        dataArr.pop();
+        return dataArr;
+    }
+    
+    // Candle sedang berjalan. Coba potong menggunakan data M5
+    let m5Data = allData['M5'];
+    if (m5Data && m5Data.length > 0) {
+        let m5StartIdx = -1, m5EndIdx = -1;
+        let left = 0, right = m5Data.length - 1;
+        
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (m5Data[mid].time >= last.time) { m5StartIdx = mid; right = mid - 1; } else { left = mid + 1; }
+        }
+        
+        left = 0; right = m5Data.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (m5Data[mid].time <= currentTime) { m5EndIdx = mid; left = mid + 1; } else { right = mid - 1; }
+        }
+        
+        if (m5StartIdx !== -1 && m5EndIdx !== -1 && m5StartIdx <= m5EndIdx) {
+            let high = -Infinity, low = Infinity;
+            for (let i = m5StartIdx; i <= m5EndIdx; i++) {
+                if (m5Data[i].high > high) high = m5Data[i].high;
+                if (m5Data[i].low < low) low = m5Data[i].low;
+            }
+            dataArr[dataArr.length - 1] = {
+                time: last.time,
+                open: last.open,
+                high: high,
+                low: low,
+                close: m5Data[m5EndIdx].close
+            };
+            return dataArr;
+        }
+    }
+    
+    // Fallback jika M5 tidak tersedia: sembunyikan candle yang belum jadi
+    dataArr.pop();
+    return dataArr;
+}
+
 async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
-    // Gunakan simulationCurrentTime (jika ada), bukan mengambil dari currentReplayIndex
     let currentReplayTime = simulationCurrentTime;
 
     currentReplayIndex = 0;
@@ -115,7 +168,6 @@ function applyTFChange(newTF, currentReplayTime) {
     let sourceData = allData[currentTF];
     
     if (isReplayMode && currentReplayTime !== null) {
-        // Cari candle dengan waktu <= currentReplayTime (Mundur ke belakang, bukan maju)
         let newIdx = 0;
         let left = 0, right = sourceData.length - 1;
         while (left <= right) {
@@ -136,12 +188,14 @@ function applyTFChange(newTF, currentReplayTime) {
         let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
         
         fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-        
-        // currentReplayIndex menunjuk ke candle berikutnya
         currentReplayIndex = newIdx - absoluteStartIndex + 1;
         if (currentReplayIndex > fullData.length) currentReplayIndex = fullData.length;
         
-        series.setData(fullData.slice(0, currentReplayIndex));
+        // POTONG CANDLE TERAKHIR SEBELUM DIGAMBAR
+        let slicedData = fullData.slice(0, currentReplayIndex);
+        slicedData = truncateLastCandle(slicedData, currentReplayTime, currentTF);
+        
+        series.setData(slicedData);
         chart.timeScale().fitContent();
     } else if (isReplayMode && currentReplayTime === null) {
         currentChunkSize = chunkSizes[currentTF] || 6000;
@@ -150,7 +204,6 @@ function applyTFChange(newTF, currentReplayTime) {
         currentReplayIndex = fullData.length;
         series.setData(fullData);
     } else {
-        // Backtest mode
         backtestStartIndex = Math.max(0, sourceData.length - (backtestChunkSize * 3));
         fullData = sourceData.slice(backtestStartIndex);
         currentReplayIndex = fullData.length - 1;
