@@ -71,7 +71,18 @@ function loadDataScript(tf, year) {
 async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
-    // Saat ganti TF, kita muat tahun terbaru yang tersedia untuk TF tersebut
+    // Tangkap waktu SEBELUM ganti data
+    let currentReplayTime = null;
+    if (isReplayMode && fullData.length > 0) {
+        let idx = Math.max(0, currentReplayIndex - 1);
+        currentReplayTime = fullData[idx] ? fullData[idx].time : null;
+    }
+
+    // Paksa currentReplayIndex ke 0 agar render loop tidak error saat transisi
+    currentReplayIndex = 0;
+    fullData = []; 
+    series.setData([]); 
+
     let targetYear = Math.max(...availableYears[newTF]);
     
     const overlay = document.getElementById('loading-overlay');
@@ -92,12 +103,7 @@ async function loadTFData(newTF) {
             text.innerText = `Memuat ${newTF} ${targetYear}... ${pct}%`;
         });
         
-        currentTF = newTF;
-        backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
-        fullData = allData[currentTF].slice(backtestStartIndex);
-        series.setData(fullData);
-        chart.timeScale().scrollToRealTime();
-        
+        applyTFChange(newTF, currentReplayTime);
         btnTF.innerText = newTF + ' ▼'; 
         
     } catch (err) {
@@ -107,6 +113,41 @@ async function loadTFData(newTF) {
         overlay.style.display = 'none';
         isLoadingData = false;
     }
+}
+
+function applyTFChange(newTF, currentReplayTime) {
+    currentTF = newTF;
+    
+    let sourceData = allData[currentTF];
+    
+    if (isReplayMode && currentReplayTime !== null) {
+        let newIdx = 0;
+        let left = 0, right = sourceData.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (sourceData[mid].time >= currentReplayTime) { newIdx = mid; right = mid - 1; } else { left = mid + 1; }
+        }
+        
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
+        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+        currentReplayIndex = newIdx - absoluteStartIndex;
+        
+        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        chart.timeScale().fitContent();
+    } else {
+        // Backtest mode
+        backtestStartIndex = Math.max(0, sourceData.length - (backtestChunkSize * 3));
+        fullData = sourceData.slice(backtestStartIndex);
+        currentReplayIndex = fullData.length - 1;
+        series.setData(fullData);
+        chart.timeScale().scrollToRealTime();
+    }
+
+    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+    if (typeof updateScissorsPosition === 'function') updateScissorsPosition();
 }
 
 async function initApp() {
@@ -123,7 +164,6 @@ async function initApp() {
         return;
     }
 
-    // Muat tahun terbaru secara otomatis
     let latestYear = Math.max(...availableYears['M5']);
     text.innerText = `Memuat Data Awal (${latestYear})...`;
 
@@ -157,7 +197,6 @@ async function initApp() {
         wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     });
 
-    // Initial Backtest Load
     backtestStartIndex = Math.max(0, allData['M5'].length - (backtestChunkSize * 3));
     fullData = allData['M5'].slice(backtestStartIndex);
     currentReplayIndex = fullData.length - 1;
