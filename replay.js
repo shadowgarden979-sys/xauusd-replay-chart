@@ -59,6 +59,10 @@ window.addEventListener('touchmove', (e) => {
     if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
         series.setData(fullData.slice(0, currentReplayIndex));
+        // UPDATE WAKTU PRESISI SAAT SCISSORS DIGESER
+        if (fullData[currentReplayIndex - 1]) {
+            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        }
     }
 }, { passive: false });
 
@@ -77,6 +81,10 @@ btnSetReplay.onclick = () => {
         currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
         if (chart) chart.timeScale().scrollToPosition(5, false);
+        // Set waktu presisi saat masuk mode replay
+        if (fullData[currentReplayIndex - 1]) {
+            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        }
     } else {
         btnSetReplay.style.background = '#26a69a';
         pauseReplay();
@@ -119,7 +127,6 @@ function checkChunkShift() {
     }
 }
 
-// FUNGSI CHUNKING BACKTEST
 function checkBacktestShift() {
     if (!chart || currentMode !== 'backtest' || isShiftingData) return;
     let range = chart.timeScale().getVisibleLogicalRange();
@@ -132,27 +139,17 @@ function checkBacktestShift() {
         isShiftingData = true;
         let shiftAmount = Math.min(backtestChunkSize, backtestStartIndex);
         backtestStartIndex -= shiftAmount;
-        
         fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
         series.setData(fullData);
-        
-        chart.timeScale().setVisibleLogicalRange({
-            from: range.from + shiftAmount,
-            to: range.to + shiftAmount
-        });
+        chart.timeScale().setVisibleLogicalRange({ from: range.from + shiftAmount, to: range.to + shiftAmount });
         setTimeout(() => { isShiftingData = false; }, 100);
     } else if (isRight) {
         isShiftingData = true;
         let shiftAmount = Math.min(backtestChunkSize, allData[currentTF].length - (backtestStartIndex + fullData.length));
         backtestStartIndex += shiftAmount;
-        
         fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
         series.setData(fullData);
-        
-        chart.timeScale().setVisibleLogicalRange({
-            from: range.from - shiftAmount,
-            to: range.to - shiftAmount
-        });
+        chart.timeScale().setVisibleLogicalRange({ from: range.from - shiftAmount, to: range.to - shiftAmount });
         setTimeout(() => { isShiftingData = false; }, 100);
     }
 }
@@ -179,6 +176,11 @@ btnPlay.onclick = () => {
             currentReplayIndex++;
             series.update(fullData[currentReplayIndex - 1]); 
             
+            // UPDATE WAKTU PRESISI SAAT PLAY
+            if (fullData[currentReplayIndex - 1]) {
+                simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+            }
+
             if (typeof checkTradeHits === 'function') checkTradeHits();
             checkChunkShift();
 
@@ -205,6 +207,11 @@ btnStep.onclick = () => {
         currentReplayIndex++;
         series.update(fullData[currentReplayIndex - 1]);
         
+        // UPDATE WAKTU PRESISI SAAT STEP
+        if (fullData[currentReplayIndex - 1]) {
+            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        }
+
         if (typeof checkTradeHits === 'function') checkTradeHits();
         checkChunkShift();
 
