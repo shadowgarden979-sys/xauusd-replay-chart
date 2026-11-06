@@ -80,7 +80,6 @@
         .f-btn { background: #363A45; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
         .snap-active { background-color: #2962FF !important; color: white; }
 
-        /* Tombol Jump to Latest */
         #btn-jump-latest {
             position: absolute; bottom: 20px; right: 20px; z-index: 20; 
             background: #2962FF; color: white; border: none; border-radius: 50%; 
@@ -89,7 +88,6 @@
         }
         #btn-jump-latest:hover { background: #1E4BD8; }
 
-        /* CSS Modal */
         #modal-overlay, #setup-modal-overlay, #history-modal-overlay, #summary-modal-overlay, #goto-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
             z-index: 100; display: none; justify-content: center; align-items: center;
@@ -102,7 +100,6 @@
         #modal-content input, #setup-modal-content input, #goto-modal-content select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; background: #1e1e1e; color: white; box-sizing: border-box;}
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         
-        /* CSS Dashboard & Summary */
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 10px; }
         .stats-grid div { background: #1e1e1e; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; }
         .stats-grid span { font-weight: bold; color: #26a69a; display: block; font-size: 14px; }
@@ -127,7 +124,6 @@
 </head>
 <body>
 
-    <!-- OVERLAY LOADING -->
     <div id="loading-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#1e1e1e; z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white;">
         <h3 style="margin-bottom:10px; font-family:sans-serif;">Memuat Data...</h3>
         <div style="width:80%; height:20px; background:#363A45; border-radius:10px; overflow:hidden;">
@@ -136,7 +132,6 @@
         <p id="loading-text" style="margin-top:10px; font-family:sans-serif;">0%</p>
     </div>
 
-    <!-- UI TOOLBAR -->
     <div id="toolbar">
         <div class="toolbar-fixed-left">
             <div style="position: relative;">
@@ -176,7 +171,6 @@
         </div>
     </div>
 
-    <!-- CHART AREA -->
     <div id="chart-wrapper">
         <div id="date-hud">-</div>
         
@@ -195,11 +189,9 @@
             <div id="scissors-time">-</div>
         </div>
 
-        <!-- Tombol Jump to Latest -->
         <button id="btn-jump-latest" title="Lompat ke Data Terbaru">⏭</button>
     </div>
 
-    <!-- REPLAY PANEL -->
     <div id="replay-panel">
         <button class="r-btn" id="btn-set-replay" style="background:#26a69a;">Set Replay</button>
         <button class="r-btn" id="btn-play">Play</button>
@@ -213,7 +205,6 @@
         </select>
     </div>
 
-    <!-- MODAL KUSTOMISASI GAMBAR -->
     <div id="modal-overlay">
         <div id="modal-content">
             <h3 style="margin:0;">Kostumisasi</h3>
@@ -242,14 +233,13 @@
         </div>
     </div>
 
-    <!-- MODAL SETUP SIMULASI -->
     <div id="setup-modal-overlay">
         <div id="setup-modal-content">
             <h3 style="margin:0;">Setup Simulasi</h3>
             <label>Tanggal Mulai:</label>
-            <input type="date" id="sim-start-date" min="2012-01-01" max="2012-12-31">
+            <input type="date" id="sim-start-date" min="2013-01-01" max="2025-12-31">
             <label>Tanggal Selesai:</label>
-            <input type="date" id="sim-end-date" min="2012-01-01" max="2012-12-31">
+            <input type="date" id="sim-end-date" min="2013-01-01" max="2025-12-31">
             <label>Modal Awal ($):</label>
             <input type="number" id="sim-balance" value="100" min="1">
             <label>Risk per Trade (%):</label>
@@ -261,24 +251,23 @@
         </div>
     </div>
 
-    <!-- MODAL GO TO DATE -->
     <div id="goto-modal-overlay">
         <div id="goto-modal-content">
             <h3 style="margin:0;">Lompat ke Tanggal</h3>
             <label>Tahun:</label>
             <select id="goto-year"></select>
             <label>Bulan:</label>
-            <select id="goto-month"></select>
+            <select id="goto-month" disabled></select>
             <label>Tanggal:</label>
-            <select id="goto-day"></select>
+            <select id="goto-day" disabled></select>
+            <p id="goto-loading" style="display:none; color:#FFD700; font-size:12px; text-align:center;">Memuat data tahun...</p>
             <div class="modal-btns">
                 <button class="btn" id="btn-close-goto">Batal</button>
-                <button class="btn" id="btn-confirm-goto" style="background:#2962FF;">Lompat</button>
+                <button class="btn" id="btn-confirm-goto" style="background:#2962FF;" disabled>Lompat</button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL SUMMARY AKHIR SESI -->
     <div id="summary-modal-overlay">
         <div id="summary-modal-content" style="text-align: center;">
             <h3 style="margin:0; color:#FFD700;">Sesi Simulasi Selesai</h3>
@@ -294,12 +283,10 @@
         </div>
     </div>
 
-    <!-- MODAL RIWAYAT TRADE (DASHBOARD) -->
     <div id="history-modal-overlay">
         <div id="history-modal-content" style="max-width: 450px; width: 95%;">
             <h3 style="margin:0; text-align:center;">Dashboard Trading</h3>
             
-            <!-- Panel Statistik -->
             <div class="stats-grid">
                 <div>Saldo Saat Ini <span id="dash-balance">$100.00</span></div>
                 <div>Total PnL <span id="dash-pnl">$0.00</span></div>
@@ -307,7 +294,6 @@
                 <div>Max Win Streak <span id="dash-streak" style="color:#26a69a;">$0.00</span></div>
             </div>
 
-            <!-- Baris Detail Statistik -->
             <div class="stats-detail-row">
                 <div>Trade <span id="dash-total-trade" style="color:#d1d4dc;">0</span></div>
                 <div>Win Rate <span id="dash-winrate" style="color:#26a69a;">0%</span></div>
@@ -316,18 +302,15 @@
                 <div>Avg (D/M/Y) <span id="dash-avg" style="color:#d1d4dc;">0 / 0 / 0</span></div>
             </div>
 
-            <!-- Kotak Rekap Bulanan -->
             <div style="background: #1e1e1e; padding: 8px; border-radius: 4px; border: 1px solid #485c7b; margin-bottom: 10px;">
                 <div style="font-size:11px; color:#d1d4dc; margin-bottom:4px;">Rincian Trade per Bulan:</div>
                 <div id="dash-monthly"></div>
             </div>
 
-            <!-- Equity Curve -->
             <div id="equity-canvas-container">
                 <canvas id="equity-canvas"></canvas>
             </div>
 
-            <!-- Tabel Riwayat -->
             <div class="table-container">
                 <table>
                     <thead>
@@ -352,7 +335,8 @@
     <!-- LIBRARY -->
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     
-    <!-- DATA AOA BARU (Hanya memuat M5 2012 untuk awal) -->
+    <!-- DATA INDEX & DATA LAMA (2012) -->
+    <script src="data_index.js"></script>
     <script src="data_M5_2012.js"></script>
 
     <!-- FILE MODULAR KITA -->
