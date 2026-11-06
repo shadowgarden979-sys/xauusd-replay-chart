@@ -283,7 +283,6 @@ document.getElementById('btn-start-sim').onclick = () => {
     fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
     currentReplayIndex = startIdx - absoluteStartIndex;
 
-    // SET WAKTU PRESISI SAAT SIMULASI DIMULAI
     if (fullData[currentReplayIndex - 1]) {
         simulationCurrentTime = fullData[currentReplayIndex - 1].time;
     }
