@@ -59,5 +59,4 @@ let backtestChunkSize = 10000;
 let backtestStartIndex = 0;
 let isShiftingData = false;
 
-// VARIABEL BARU UNTUK SINKRONISASI WAKTU
 let simulationCurrentTime = null;
