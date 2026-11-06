@@ -68,22 +68,17 @@ function loadDataScript(tf, year) {
     return loadingPromises[varName];
 }
 
-// FUNGSI BARU: Memotong Candle Terakhir agar Tidak Mengintip Masa Depan
 function truncateLastCandle(dataArr, currentTime, tf) {
     if (dataArr.length === 0) return dataArr;
     let last = dataArr[dataArr.length - 1];
     let tfSec = getTFSeconds(tf);
     
-    // Jika candle sudah tutup sepenuhnya, tidak perlu dipotong
     if (last.time + tfSec <= currentTime) return dataArr; 
-    
-    // Jika candle berada di masa depan (seharusnya tidak terjadi)
     if (last.time > currentTime) {
         dataArr.pop();
         return dataArr;
     }
     
-    // Candle sedang berjalan. Coba potong menggunakan data M5
     let m5Data = allData['M5'];
     if (m5Data && m5Data.length > 0) {
         let m5StartIdx = -1, m5EndIdx = -1;
@@ -107,17 +102,11 @@ function truncateLastCandle(dataArr, currentTime, tf) {
                 if (m5Data[i].low < low) low = m5Data[i].low;
             }
             dataArr[dataArr.length - 1] = {
-                time: last.time,
-                open: last.open,
-                high: high,
-                low: low,
-                close: m5Data[m5EndIdx].close
+                time: last.time, open: last.open, high: high, low: low, close: m5Data[m5EndIdx].close
             };
             return dataArr;
         }
     }
-    
-    // Fallback jika M5 tidak tersedia: sembunyikan candle yang belum jadi
     dataArr.pop();
     return dataArr;
 }
@@ -126,13 +115,33 @@ async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
     let currentReplayTime = simulationCurrentTime;
+    let targetYear = null;
 
-    currentReplayIndex = 0;
-    fullData = []; 
-    series.setData([]); 
+    if (currentReplayTime) {
+        targetYear = new Date(currentReplayTime * 1000).getUTCFullYear();
+    } else {
+        targetYear = Math.max(...availableYears[newTF]);
+    }
 
-    let targetYear = Math.max(...availableYears[newTF]);
-    
+    if (!availableYears[newTF] || !availableYears[newTF].includes(targetYear)) {
+        targetYear = Math.max(...availableYears[newTF]);
+    }
+
+    let isDataReady = false;
+    if (allData[newTF] && allData[newTF].length > 0) {
+        let currentDataYear = new Date(allData[newTF][0].time * 1000).getUTCFullYear();
+        if (currentDataYear === targetYear) {
+            isDataReady = true;
+        }
+    }
+
+    if (isDataReady) {
+        applyTFChange(newTF, currentReplayTime);
+        document.getElementById('btn-tf').innerText = newTF + ' ▼';
+        return;
+    }
+
+    // Jika data belum siap, unduh
     const overlay = document.getElementById('loading-overlay');
     const bar = document.getElementById('loading-bar');
     const text = document.getElementById('loading-text');
@@ -142,7 +151,7 @@ async function loadTFData(newTF) {
     isLoadingData = true;
     overlay.style.display = 'flex';
     bar.style.width = '0%';
-    text.innerText = `Memuat ${newTF}...`;
+    text.innerText = `Memuat ${newTF} (${targetYear})...`;
 
     try {
         const rawData = await loadDataScript(newTF, targetYear);
@@ -155,7 +164,7 @@ async function loadTFData(newTF) {
         btnTF.innerText = newTF + ' ▼'; 
         
     } catch (err) {
-        alert(err.message);
+        alert("Gagal memuat TF: " + err.message);
         btnTF.innerText = originalText; 
     } finally {
         overlay.style.display = 'none';
@@ -191,7 +200,6 @@ function applyTFChange(newTF, currentReplayTime) {
         currentReplayIndex = newIdx - absoluteStartIndex + 1;
         if (currentReplayIndex > fullData.length) currentReplayIndex = fullData.length;
         
-        // POTONG CANDLE TERAKHIR SEBELUM DIGAMBAR
         let slicedData = fullData.slice(0, currentReplayIndex);
         slicedData = truncateLastCandle(slicedData, currentReplayTime, currentTF);
         
