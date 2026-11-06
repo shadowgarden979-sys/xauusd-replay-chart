@@ -251,8 +251,8 @@ document.getElementById('btn-jump-latest').onclick = () => {
     }
 };
 
-// Logika Setup Simulasi
-document.getElementById('btn-start-sim').onclick = () => {
+// --- LOGIKA SETUP SIMULASI (PERBAIKAN) ---
+document.getElementById('btn-start-sim').onclick = async () => {
     let startDateStr = document.getElementById('sim-start-date').value;
     let endDateStr = document.getElementById('sim-end-date').value;
     let bal = parseFloat(document.getElementById('sim-balance').value);
@@ -264,58 +264,93 @@ document.getElementById('btn-start-sim').onclick = () => {
     
     let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
     let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
+    let startYear = new Date(startDateStr + 'T00:00:00Z').getUTCFullYear();
 
     if (startTs >= endTs) { alert("Tanggal Mulai harus lebih awal!"); return; }
 
-    let sourceData = allData[currentTF];
-    let startIdx = -1;
-    let left = 0, right = sourceData.length - 1;
-    while (left <= right) {
-        let mid = Math.floor((left + right) / 2);
-        if (sourceData[mid].time >= startTs) { startIdx = mid; right = mid - 1; } else { left = mid + 1; }
-    }
-    if (startIdx === -1) startIdx = sourceData.length - 1;
-
-    currentChunkSize = chunkSizes[currentTF] || 6000;
-    absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); 
-    let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
-    
-    fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-    currentReplayIndex = startIdx - absoluteStartIndex;
-
-    if (fullData[currentReplayIndex - 1]) {
-        simulationCurrentTime = fullData[currentReplayIndex - 1].time;
-    }
-
-    drawings = drawings.filter(d => !d.type.startsWith('position'));
-    selectedDrawing = null;
-    if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
-
-    if (typeof simConfig !== 'undefined') {
-        simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
-    }
-    if (typeof currentMode !== 'undefined') currentMode = 'simulation';
-    
-    btnMode.innerText = 'SIMULASI ▼';
-    btnMode.style.background = '#26a69a';
+    // Tampilkan loading
+    const overlay = document.getElementById('loading-overlay');
+    const bar = document.getElementById('loading-bar');
+    const text = document.getElementById('loading-text');
     setupModal.style.display = 'none';
+    overlay.style.display = 'flex';
+    bar.style.width = '0%';
+    text.innerText = `Menyiapkan data tahun ${startYear}...`;
 
-    if (typeof isReplayMode !== 'undefined') isReplayMode = true;
-    if (typeof isPlaying !== 'undefined') isPlaying = false;
-    
-    const btnSetReplay = document.getElementById('btn-set-replay');
-    if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
+    try {
+        // Cek apakah tahun data saat ini sudah sesuai dengan startYear
+        let isDataReady = false;
+        if (allData[currentTF] && allData[currentTF].length > 0) {
+            let currentDataYear = new Date(allData[currentTF][0].time * 1000).getUTCFullYear();
+            if (currentDataYear === startYear) {
+                isDataReady = true;
+            }
+        }
 
-    series.setData(fullData.slice(0, currentReplayIndex + 1));
-    
-    if (chart) {
-        let lookbackIdx = Math.max(0, currentReplayIndex - currentChunkSize);
-        chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: currentReplayIndex + 20 });
+        // Jika belum sesuai, unduh data tahun tersebut
+        if (!isDataReady) {
+            const rawData = await loadDataScript(currentTF, startYear);
+            allData[currentTF] = await parseAoAAsync(rawData, (pct) => {
+                bar.style.width = pct + '%';
+                text.innerText = `Memuat data ${startYear}... ${pct}%`;
+            });
+        }
+
+        let sourceData = allData[currentTF];
+        let startIdx = -1;
+        let left = 0, right = sourceData.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (sourceData[mid].time >= startTs) { startIdx = mid; right = mid - 1; } else { left = mid + 1; }
+        }
+        if (startIdx === -1) startIdx = sourceData.length - 1;
+
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, startIdx - currentChunkSize); 
+        let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
+        
+        fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
+        currentReplayIndex = startIdx - absoluteStartIndex;
+
+        if (fullData[currentReplayIndex - 1]) {
+            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        }
+
+        drawings = drawings.filter(d => !d.type.startsWith('position'));
+        selectedDrawing = null;
+        if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+
+        if (typeof simConfig !== 'undefined') {
+            simConfig = { balance: bal, risk: risk, startDate: startDateStr, endDate: endDateStr, endTime: endTs };
+        }
+        if (typeof currentMode !== 'undefined') currentMode = 'simulation';
+        
+        btnMode.innerText = 'SIMULASI ▼';
+        btnMode.style.background = '#26a69a';
+
+        if (typeof isReplayMode !== 'undefined') isReplayMode = true;
+        if (typeof isPlaying !== 'undefined') isPlaying = false;
+        
+        const btnSetReplay = document.getElementById('btn-set-replay');
+        if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
+
+        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        
+        if (chart) {
+            let lookbackIdx = Math.max(0, currentReplayIndex - currentChunkSize);
+            chart.timeScale().setVisibleLogicalRange({ from: lookbackIdx, to: currentReplayIndex + 20 });
+        }
+
+        if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+        if (typeof startSimulation === 'function') startSimulation();
+        updateModeDropdownUI();
+
+    } catch (err) {
+        alert("Gagal memulai simulasi: " + err.message);
+        setupModal.style.display = 'flex';
+    } finally {
+        overlay.style.display = 'none';
     }
-
-    if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
-    if (typeof startSimulation === 'function') startSimulation();
-    updateModeDropdownUI();
 };
 
 document.addEventListener('click', () => { 
