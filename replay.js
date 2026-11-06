@@ -59,7 +59,6 @@ window.addEventListener('touchmove', (e) => {
     if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
         series.setData(fullData.slice(0, currentReplayIndex));
-        // UPDATE WAKTU PRESISI SAAT SCISSORS DIGESER
         if (fullData[currentReplayIndex - 1]) {
             simulationCurrentTime = fullData[currentReplayIndex - 1].time;
         }
@@ -81,7 +80,6 @@ btnSetReplay.onclick = () => {
         currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
         if (chart) chart.timeScale().scrollToPosition(5, false);
-        // Set waktu presisi saat masuk mode replay
         if (fullData[currentReplayIndex - 1]) {
             simulationCurrentTime = fullData[currentReplayIndex - 1].time;
         }
@@ -176,7 +174,6 @@ btnPlay.onclick = () => {
             currentReplayIndex++;
             series.update(fullData[currentReplayIndex - 1]); 
             
-            // UPDATE WAKTU PRESISI SAAT PLAY
             if (fullData[currentReplayIndex - 1]) {
                 simulationCurrentTime = fullData[currentReplayIndex - 1].time;
             }
@@ -207,7 +204,6 @@ btnStep.onclick = () => {
         currentReplayIndex++;
         series.update(fullData[currentReplayIndex - 1]);
         
-        // UPDATE WAKTU PRESISI SAAT STEP
         if (fullData[currentReplayIndex - 1]) {
             simulationCurrentTime = fullData[currentReplayIndex - 1].time;
         }
