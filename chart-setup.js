@@ -71,14 +71,9 @@ function loadDataScript(tf, year) {
 async function loadTFData(newTF) {
     if (isLoadingData) return; 
     
-    // Tangkap waktu SEBELUM ganti data
-    let currentReplayTime = null;
-    if (isReplayMode && fullData.length > 0) {
-        let idx = Math.max(0, currentReplayIndex - 1);
-        currentReplayTime = fullData[idx] ? fullData[idx].time : null;
-    }
+    // Gunakan simulationCurrentTime (jika ada), bukan mengambil dari currentReplayIndex
+    let currentReplayTime = simulationCurrentTime;
 
-    // Paksa currentReplayIndex ke 0 agar render loop tidak error saat transisi
     currentReplayIndex = 0;
     fullData = []; 
     series.setData([]); 
@@ -117,26 +112,43 @@ async function loadTFData(newTF) {
 
 function applyTFChange(newTF, currentReplayTime) {
     currentTF = newTF;
-    
     let sourceData = allData[currentTF];
     
     if (isReplayMode && currentReplayTime !== null) {
+        // Cari candle dengan waktu <= currentReplayTime (Mundur ke belakang, bukan maju)
         let newIdx = 0;
         let left = 0, right = sourceData.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
-            if (sourceData[mid].time >= currentReplayTime) { newIdx = mid; right = mid - 1; } else { left = mid + 1; }
+            if (sourceData[mid].time <= currentReplayTime) {
+                newIdx = mid;
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
         }
         
+        if (newIdx >= sourceData.length) newIdx = sourceData.length - 1;
+        if (newIdx < 0) newIdx = 0;
+
         currentChunkSize = chunkSizes[currentTF] || 6000;
         absoluteStartIndex = Math.max(0, newIdx - currentChunkSize);
         let maxLoadedIndex = Math.min(sourceData.length, absoluteStartIndex + (currentChunkSize * 3));
         
         fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
-        currentReplayIndex = newIdx - absoluteStartIndex;
         
-        series.setData(fullData.slice(0, currentReplayIndex + 1));
+        // currentReplayIndex menunjuk ke candle berikutnya
+        currentReplayIndex = newIdx - absoluteStartIndex + 1;
+        if (currentReplayIndex > fullData.length) currentReplayIndex = fullData.length;
+        
+        series.setData(fullData.slice(0, currentReplayIndex));
         chart.timeScale().fitContent();
+    } else if (isReplayMode && currentReplayTime === null) {
+        currentChunkSize = chunkSizes[currentTF] || 6000;
+        absoluteStartIndex = Math.max(0, sourceData.length - (currentChunkSize * 3));
+        fullData = sourceData.slice(absoluteStartIndex);
+        currentReplayIndex = fullData.length;
+        series.setData(fullData);
     } else {
         // Backtest mode
         backtestStartIndex = Math.max(0, sourceData.length - (backtestChunkSize * 3));
