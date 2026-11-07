@@ -7,7 +7,6 @@ function checkHandleHit(x, y) {
     if (!selectedDrawing) return null;
     const d = selectedDrawing;
     
-    // Cegah interaksi handle jika sudah closed
     if (d.status === 'closed') return null;
 
     if (d.type === 'circle') {
@@ -32,7 +31,6 @@ function checkHandleHit(x, y) {
         } else return null;
     }
     
-    // Handle center hanya aktif jika tidak active/closed
     if (cx !== null && cy !== null && Math.hypot(x - cx, y - cy) < 30) {
         if (d.status !== 'active') return 'center';
     }
@@ -40,7 +38,6 @@ function checkHandleHit(x, y) {
     if (d.type.startsWith('position')) {
         const x1 = getX(d.start.time); const yEntry = getY(d.start.price);
         const x2 = getX(d.end.time); const yTP = getY(d.tp); const ySL = getY(d.sl);
-        // Handle Entry hanya aktif jika pending
         if (d.status === 'pending' && x1 !== null && yEntry !== null && Math.hypot(x - x1, y - yEntry) < 30) return 'entry';
         if (x2 !== null && yTP !== null && Math.hypot(x - x2, y - yTP) < 30) return 'tp';
         if (x2 !== null && ySL !== null && Math.hypot(x - x2, y - ySL) < 30) return 'sl';
@@ -58,26 +55,40 @@ function checkObjectHit(x, y) {
     for (let i = drawings.length - 1; i >= 0; i--) {
         const d = drawings[i];
         if (!d || !d.type) continue;
+        
+        // Abaikan jika objek berada di luar layar (koordinat null)
         const x1 = getX(d.start.time); const y1 = getY(d.start.price);
+        const x2 = getX(d.end.time); const y2 = getY(d.end.price);
+        if (x1 === null || y1 === null) continue; 
+
         if (d.type.startsWith('position')) {
-            let x2 = getX(d.end.time); const yTP = getY(d.tp); const ySL = getY(d.sl);
+            const yTP = getY(d.tp); const ySL = getY(d.sl);
             if (x1 === null || x2 === null || y1 === null) continue;
             const minX = Math.min(x1, x2); const maxX = Math.max(x1, x2);
             const minY = Math.min(yTP||y1, ySL||y1, y1); const maxY = Math.max(yTP||y1, ySL||y1, y1);
             if (x > minX && x < maxX && y > minY && y < maxY) return d;
         } else if (d.type === 'circle') {
-            const x2 = getX(d.end.time); const y2 = getY(d.end.price);
             if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
             if (Math.hypot(x - x1, y - y1) <= Math.hypot(x2 - x1, y2 - y1) + 10) return d;
         } else {
-            const x2 = getX(d.end.time); const y2 = getY(d.end.price);
             if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+            
             if (d.type === 'box') {
                 const minX = Math.min(x1, x2); const maxX = Math.max(x1, x2);
                 const minY = Math.min(y1, y2); const maxY = Math.max(y1, y2);
                 if (x > minX && x < maxX && y > minY && y < maxY) return d;
             } else if (d.type === 'line' || d.type === 'arrow' || d.type === 'fibo') {
-                if (Math.abs((y2 - y1)*x - (x2 - x1)*y + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < 20) return d;
+                // PERBAIKAN: Deteksi HANYA pada area segmen garis, bukan garis tak terbatas
+                const minX = Math.min(x1, x2) - 20;
+                const maxX = Math.max(x1, x2) + 20;
+                const minY = Math.min(y1, y2) - 20;
+                const maxY = Math.max(y1, y2) + 20;
+                
+                // Cek bounding box dulu
+                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                    // Jika di dalam bounding box, baru cek jarak ke garis
+                    if (Math.abs((y2 - y1)*x - (x2 - x1)*y + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < 20) return d;
+                }
             } else if (d.type === 'text') {
                 if (Math.hypot(x - x1, y - y1) < 30) return d;
             }
@@ -199,11 +210,10 @@ function handleMove(e) {
         const coords = getChartCoords(x, y);
         if (!coords) return;
 
-        // Cegah drag jika status closed
         if (selectedDrawing.status === 'closed') return;
 
         if (dragHandle === 'center') {
-            if (selectedDrawing.status === 'active') return; // Terkunci saat active
+            if (selectedDrawing.status === 'active') return; 
             const deltaTime = coords.time - dragStartTime;
             const deltaPrice = coords.price - dragStartPrice;
             if (selectedDrawing.type.startsWith('position')) {
@@ -232,7 +242,6 @@ function handleMove(e) {
                 if (selectedDrawing.type === 'position-long') {
                     if (newSL >= selectedDrawing.start.price) newSL = selectedDrawing.start.price - 0.01;
                     
-                    // Cek Batasan SL saat active: Tidak boleh lebih lebar dari initialSL
                     if (selectedDrawing.status === 'active' && newSL < selectedDrawing.initialSL) {
                         newSL = selectedDrawing.initialSL;
                     }
@@ -240,7 +249,6 @@ function handleMove(e) {
                 } else {
                     if (newSL <= selectedDrawing.start.price) newSL = selectedDrawing.start.price + 0.01;
 
-                    // Cek Batasan SL saat active
                     if (selectedDrawing.status === 'active' && newSL > selectedDrawing.initialSL) {
                         newSL = selectedDrawing.initialSL;
                     }
@@ -249,7 +257,7 @@ function handleMove(e) {
             } else if (dragHandle === 'exit') {
                 selectedDrawing.end.time = coords.time;
             } else if (dragHandle === 'entry') {
-                if (selectedDrawing.status === 'active') return; // Terkunci saat active
+                if (selectedDrawing.status === 'active') return; 
                 let newPrice = coords.price;
                 if (selectedDrawing.type === 'position-long') {
                     if (newPrice >= selectedDrawing.tp) newPrice = selectedDrawing.tp - 0.01;
