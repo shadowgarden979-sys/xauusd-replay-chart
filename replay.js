@@ -1,6 +1,6 @@
 // ==========================================
 // FILE: replay.js
-// Deskripsi: Logika Replay, Chunking, & Garis Gunting (FINAL)
+// Deskripsi: Logika Replay, Chunking, & Garis Gunting
 // ==========================================
 
 const scissorsLine = document.getElementById('scissors-line');
@@ -131,13 +131,43 @@ function checkChunkShift() {
     }
 }
 
-// PERBAIKAN: Ambang batas dinaikkan dan pengecekan dibuat lebih responsif
+// FUNGSI BARU: Memuat data bulan berikutnya secara diam-diam
+async function checkMonthlyLoad() {
+    if (!isMonthlyMode || currentMode !== 'simulation' || isLoadingNextMonth) return;
+    if (currentLoadedMonth >= 12) return; // Jika sudah Desember, tidak ada bulan depan di tahun yang sama
+
+    // Jika index replay sudah mencapai 80% dari total allData yang saat ini dimuat
+    let threshold = allData[currentTF].length * 0.8;
+    if (currentReplayIndex > threshold) {
+        isLoadingNextMonth = true;
+        let nextMonth = currentLoadedMonth + 1;
+        
+        try {
+            // Muat data bulan depan
+            const rawData = await loadDataScript(currentTF, currentLoadedYear, nextMonth);
+            const parsedData = await parseAoAAsync(rawData);
+            
+            // Sambungkan ke allData
+            allData[currentTF] = allData[currentTF].concat(parsedData);
+            currentLoadedMonth = nextMonth;
+            
+            // Perbarui fullData agar Chunking window ikut tahu ada data baru
+            let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
+            fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
+            
+        } catch (err) {
+            console.warn("Gagal memuat bulan berikutnya: ", err);
+        } finally {
+            isLoadingNextMonth = false;
+        }
+    }
+}
+
 function checkBacktestShift() {
     if (!chart || currentMode !== 'backtest' || isShiftingData) return;
     let range = chart.timeScale().getVisibleLogicalRange();
     if (!range) return;
 
-    // Ambang batas dinaikkan ke 2000 agar lebih responsif
     let isLeft = range.from < 2000 && backtestStartIndex > 0;
     let isRight = range.to > fullData.length - 2000 && (backtestStartIndex + fullData.length) < allData[currentTF].length;
 
@@ -153,16 +183,13 @@ function checkBacktestShift() {
         
         series.setData(fullData);
         
-        // Geser kamera agar tidak melompat
         chart.timeScale().setVisibleLogicalRange({ 
             from: curFrom + shiftAmount, 
             to: curTo + shiftAmount 
         });
         
-        // Lepas kunci setelah setData selesai
         setTimeout(() => { 
             isShiftingData = false; 
-            // Panggil ulang untuk memastikan jika user masih di ujung, langsung render chunk berikutnya
             checkBacktestShift(); 
         }, 50);
         
@@ -196,7 +223,6 @@ if (chart) {
         updateScissorsPosition();
         if (currentMode === 'backtest' && !isShiftingData) {
             clearTimeout(backtestScrollTimeout);
-            // Debounce diperkecil agar lebih responsif
             backtestScrollTimeout = setTimeout(checkBacktestShift, 50);
         }
     });
@@ -219,7 +245,13 @@ btnPlay.onclick = () => {
             }
 
             if (typeof checkTradeHits === 'function') checkTradeHits();
-            checkChunkShift();
+            
+            // Cek pemuatan bulan berikutnya (background)
+            if (isMonthlyMode && !isLoadingNextMonth) {
+                checkMonthlyLoad();
+            } else {
+                checkChunkShift();
+            }
 
             if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
@@ -252,7 +284,12 @@ btnStep.onclick = () => {
         }
 
         if (typeof checkTradeHits === 'function') checkTradeHits();
-        checkChunkShift();
+        
+        if (isMonthlyMode && !isLoadingNextMonth) {
+            checkMonthlyLoad();
+        } else {
+            checkChunkShift();
+        }
 
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
