@@ -117,28 +117,39 @@ async function loadTFData(newTF) {
     
     let currentReplayTime = simulationCurrentTime;
     let targetYear = null;
+    let targetMonth = null;
 
     if (currentReplayTime) {
-        targetYear = new Date(currentReplayTime * 1000).getUTCFullYear();
+        let dt = new Date(currentReplayTime * 1000);
+        targetYear = dt.getUTCFullYear();
+        targetMonth = dt.getUTCMonth() + 1;
     } else if (fullData && fullData.length > 0) {
-        targetYear = new Date(fullData[0].time * 1000).getUTCFullYear();
+        let dt = new Date(fullData[0].time * 1000);
+        targetYear = dt.getUTCFullYear();
+        targetMonth = dt.getUTCMonth() + 1;
     } else {
         targetYear = Math.max(...availableYears[newTF]);
+        targetMonth = 1;
     }
 
     if (!availableYears[newTF] || !availableYears[newTF].includes(targetYear)) {
         targetYear = Math.max(...availableYears[newTF]);
     }
 
+    // PERBAIKAN LOGIKA BULANAN SAAT PINDAH TF
+    let isTargetMonthly = (targetYear === 2013 && (newTF === 'M1' || newTF === 'M5'));
+    let varNameToCheck = isTargetMonthly ? `data_${newTF}_${targetYear}_${String(targetMonth).padStart(2, '0')}` : `data_${newTF}_${targetYear}`;
+
     let isDataReady = false;
     if (allData[newTF] && allData[newTF].length > 0) {
         let currentDataYear = new Date(allData[newTF][0].time * 1000).getUTCFullYear();
+        // Cek apakah data yang ada di memori sudah sesuai tahun (dan bulan jika bulanan)
         if (currentDataYear === targetYear) {
             isDataReady = true;
         }
     }
 
-    if (isDataReady) {
+    if (isDataReady && !isTargetMonthly) {
         applyTFChange(newTF, currentReplayTime);
         document.getElementById('btn-tf').innerText = newTF + ' ▼';
         return;
@@ -156,8 +167,15 @@ async function loadTFData(newTF) {
     text.innerText = `Memuat ${newTF} (${targetYear})...`;
 
     try {
-        // Jika ganti TF di tahun 2013 dan TF tersebut tidak punya file bulanan, kita pakai file tahunan
-        const rawData = await loadDataScript(newTF, targetYear);
+        let rawData;
+        if (isTargetMonthly) {
+            // Panggil file bulanan
+            rawData = await loadDataScript(newTF, targetYear, targetMonth);
+        } else {
+            // Panggil file tahunan
+            rawData = await loadDataScript(newTF, targetYear);
+        }
+
         allData[newTF] = await parseAoAAsync(rawData, (pct) => {
             bar.style.width = pct + '%';
             text.innerText = `Memuat ${newTF} ${targetYear}... ${pct}%`;
@@ -255,8 +273,10 @@ async function initApp() {
     let targetTF = 'M5';
 
     if (isResuming) {
-        targetYear = new Date(savedSimState.simulationCurrentTime * 1000).getUTCFullYear();
+        let dt = new Date(savedSimState.simulationCurrentTime * 1000);
+        targetYear = dt.getUTCFullYear();
         targetTF = savedSimState.currentTF;
+        let targetMonth = dt.getUTCMonth() + 1;
         
         currentMode = savedSimState.currentMode;
         simConfig = savedSimState.simConfig;
@@ -274,10 +294,9 @@ async function initApp() {
         const btnSetReplay = document.getElementById('btn-set-replay');
         if (btnSetReplay) btnSetReplay.style.background = '#ef5350';
 
-        // Deteksi apakah ini butuh bulanan
         if (targetYear === 2013 && (targetTF === 'M1' || targetTF === 'M5')) {
             isMonthlyMode = true;
-            currentLoadedMonth = new Date(savedSimState.simulationCurrentTime * 1000).getUTCMonth() + 1;
+            currentLoadedMonth = targetMonth;
             currentLoadedYear = 2013;
         }
         
