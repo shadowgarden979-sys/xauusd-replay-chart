@@ -51,7 +51,6 @@ let simRiskPercent = 1;
 let tradeHistory = [];
 let isSimulationRunning = false;
 
-// UKURAN CHUNKING (D1 DITAMBAHKAN)
 let chunkSizes = { 'M1': 30000, 'M5': 6000, 'M15': 2000, 'H1': 500, 'H4': 125, 'D1': 22 };
 let currentChunkSize = 6000; 
 let absoluteStartIndex = 0; 
@@ -61,3 +60,9 @@ let backtestStartIndex = 0;
 let isShiftingData = false;
 
 let simulationCurrentTime = null;
+
+// VARIABEL BARU UNTUK SISTEM BULANAN
+let isMonthlyMode = false;
+let currentLoadedMonth = 1;
+let currentLoadedYear = 2013;
+let isLoadingNextMonth = false;
