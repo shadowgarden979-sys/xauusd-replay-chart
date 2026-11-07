@@ -61,6 +61,7 @@ window.addEventListener('touchmove', (e) => {
         series.setData(fullData.slice(0, currentReplayIndex));
         if (fullData[currentReplayIndex - 1]) {
             simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+            if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
         }
     }
 }, { passive: false });
@@ -89,6 +90,7 @@ btnSetReplay.onclick = () => {
         currentReplayIndex = fullData.length;
         series.setData(fullData);
     }
+    if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
     updateScissorsVisibility();
 };
 
@@ -181,6 +183,9 @@ btnPlay.onclick = () => {
             if (typeof checkTradeHits === 'function') checkTradeHits();
             checkChunkShift();
 
+            // Simpan state setiap Play berjalan
+            if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+
             let currentCandleTime = fullData[currentReplayIndex - 1].time;
             if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
                 handleSessionEnd();
@@ -210,6 +215,9 @@ btnStep.onclick = () => {
 
         if (typeof checkTradeHits === 'function') checkTradeHits();
         checkChunkShift();
+
+        // Simpan state setiap Step
+        if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
         let currentCandleTime = fullData[currentReplayIndex - 1].time;
         if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
