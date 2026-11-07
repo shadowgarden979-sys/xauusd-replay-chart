@@ -51,7 +51,8 @@ let simRiskPercent = 1;
 let tradeHistory = [];
 let isSimulationRunning = false;
 
-let chunkSizes = { 'M1': 30000, 'M5': 6000, 'M15': 2000, 'H1': 500, 'H4': 125 };
+// UKURAN CHUNKING (D1 DITAMBAHKAN)
+let chunkSizes = { 'M1': 30000, 'M5': 6000, 'M15': 2000, 'H1': 500, 'H4': 125, 'D1': 22 };
 let currentChunkSize = 6000; 
 let absoluteStartIndex = 0; 
 
