@@ -6,6 +6,18 @@
 // --- Fungsi Penyimpanan ---
 function saveToLocalStorage() { 
     localStorage.setItem('xau_drawings_v34', JSON.stringify(drawings)); 
+    
+    // Simpan state simulasi
+    let simState = {
+        currentMode: typeof currentMode !== 'undefined' ? currentMode : 'backtest',
+        currentTF: typeof currentTF !== 'undefined' ? currentTF : 'M5',
+        simulationCurrentTime: typeof simulationCurrentTime !== 'undefined' ? simulationCurrentTime : null,
+        simConfig: typeof simConfig !== 'undefined' ? simConfig : null,
+        simBalance: typeof simBalance !== 'undefined' ? simBalance : 100,
+        tradeHistory: typeof tradeHistory !== 'undefined' ? tradeHistory : [],
+        isSimulationRunning: typeof isSimulationRunning !== 'undefined' ? isSimulationRunning : false
+    };
+    localStorage.setItem('xau_sim_state_v1', JSON.stringify(simState));
 }
 
 function saveDefaults() {
@@ -24,7 +36,7 @@ try {
 } catch(e) { console.log("LocalStorage defaults reset."); }
 
 // --- Render Loop Utama ---
-let renderErrorShown = false; // Mencegah loop error membanjiri layar
+let renderErrorShown = false; 
 
 function render() {
     try {
@@ -63,7 +75,6 @@ function render() {
         updateDateHUD();
 
     } catch (error) {
-        // Menampilkan error ke layar HANYA SEKALI
         if (!renderErrorShown) {
             renderErrorShown = true;
             document.body.innerHTML += `<div style="position:fixed;top:50px;left:10px;right:10px;background:red;color:white;z-index:9999;padding:15px;font-size:12px;word-wrap:break-word;">
@@ -73,9 +84,5 @@ function render() {
         }
         console.error("Render Error:", error);
     }
-    
-    // Selalu panggil requestAnimationFrame di luar try-catch agar loop terus berjalan
     requestAnimationFrame(render);
 }
-
-
