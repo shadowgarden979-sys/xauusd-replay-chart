@@ -35,7 +35,6 @@ async function parseAoAAsync(aoaArray, progressCallback) {
     return result;
 }
 
-// MODIFIKASI: Mendukung pemanggilan bulanan
 function loadDataScript(tf, year, month = null) {
     let varName = month ? `data_${tf}_${year}_${String(month).padStart(2, '0')}` : `data_${tf}_${year}`;
     const existingData = getGlobalConst(varName);
@@ -67,6 +66,27 @@ function loadDataScript(tf, year, month = null) {
         document.head.appendChild(script);
     });
     return loadingPromises[varName];
+}
+
+// FUNGSI BARU: PRE-FETCH TF LAIN DI LATAR BELAKANG
+async function prefetchOtherTFs(year) {
+    const tfs = ['M15', 'H1', 'H4', 'D1', 'M1', 'M5'].filter(t => t !== currentTF);
+    for (let tf of tfs) {
+        if (!availableYears[tf] || !availableYears[tf].includes(year)) continue;
+        if (allData[tf] && allData[tf].length > 0) continue; 
+        
+        try {
+            if (year === 2013 && (tf === 'M1' || tf === 'M5')) {
+                const raw = await loadDataScript(tf, year, 1);
+                allData[tf] = await parseAoAAsync(raw);
+            } else {
+                const raw = await loadDataScript(tf, year);
+                allData[tf] = await parseAoAAsync(raw);
+            }
+        } catch(e) { 
+            console.warn(`Pre-fetch gagal untuk ${tf} ${year}`); 
+        }
+    }
 }
 
 function truncateLastCandle(dataArr, currentTime, tf) {
@@ -136,14 +156,11 @@ async function loadTFData(newTF) {
         targetYear = Math.max(...availableYears[newTF]);
     }
 
-    // PERBAIKAN LOGIKA BULANAN SAAT PINDAH TF
     let isTargetMonthly = (targetYear === 2013 && (newTF === 'M1' || newTF === 'M5'));
-    let varNameToCheck = isTargetMonthly ? `data_${newTF}_${targetYear}_${String(targetMonth).padStart(2, '0')}` : `data_${newTF}_${targetYear}`;
 
     let isDataReady = false;
     if (allData[newTF] && allData[newTF].length > 0) {
         let currentDataYear = new Date(allData[newTF][0].time * 1000).getUTCFullYear();
-        // Cek apakah data yang ada di memori sudah sesuai tahun (dan bulan jika bulanan)
         if (currentDataYear === targetYear) {
             isDataReady = true;
         }
@@ -169,10 +186,8 @@ async function loadTFData(newTF) {
     try {
         let rawData;
         if (isTargetMonthly) {
-            // Panggil file bulanan
             rawData = await loadDataScript(newTF, targetYear, targetMonth);
         } else {
-            // Panggil file tahunan
             rawData = await loadDataScript(newTF, targetYear);
         }
 
@@ -389,6 +404,9 @@ async function initApp() {
         if (typeof render === 'function') render();
         if (typeof updateModeDropdownUI === 'function') updateModeDropdownUI();
         if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
+        
+        // TRIGGER PRE-FETCH TF LAIN SAAT APP DIBUKA
+        if (targetYear) prefetchOtherTFs(targetYear);
     }, 500);
 }
 
