@@ -1,6 +1,6 @@
 // ==========================================
 // FILE: replay.js
-// Deskripsi: Logika Replay, Chunking, & Garis Gunting
+// Deskripsi: Logika Replay, Chunking, & Garis Gunting (FINAL)
 // ==========================================
 
 const scissorsLine = document.getElementById('scissors-line');
@@ -59,8 +59,10 @@ window.addEventListener('touchmove', (e) => {
     if (newIdx !== currentReplayIndex) {
         currentReplayIndex = newIdx;
         series.setData(fullData.slice(0, currentReplayIndex));
-        if (fullData[currentReplayIndex - 1]) {
-            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        
+        let safeIdx = Math.max(0, currentReplayIndex - 1);
+        if (fullData[safeIdx]) {
+            simulationCurrentTime = fullData[safeIdx].time;
             if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
         }
     }
@@ -81,8 +83,10 @@ btnSetReplay.onclick = () => {
         currentReplayIndex = Math.max(0, fullData.length - 100); 
         series.setData(fullData.slice(0, currentReplayIndex));
         if (chart) chart.timeScale().scrollToPosition(5, false);
-        if (fullData[currentReplayIndex - 1]) {
-            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        
+        let safeIdx = Math.max(0, currentReplayIndex - 1);
+        if (fullData[safeIdx]) {
+            simulationCurrentTime = fullData[safeIdx].time;
         }
     } else {
         btnSetReplay.style.background = '#26a69a';
@@ -127,30 +131,62 @@ function checkChunkShift() {
     }
 }
 
+// PERBAIKAN: Ambang batas dinaikkan dan pengecekan dibuat lebih responsif
 function checkBacktestShift() {
     if (!chart || currentMode !== 'backtest' || isShiftingData) return;
     let range = chart.timeScale().getVisibleLogicalRange();
     if (!range) return;
 
-    let isLeft = range.from < 1000 && backtestStartIndex > 0;
-    let isRight = range.to > fullData.length - 1000 && (backtestStartIndex + fullData.length) < allData[currentTF].length;
+    // Ambang batas dinaikkan ke 2000 agar lebih responsif
+    let isLeft = range.from < 2000 && backtestStartIndex > 0;
+    let isRight = range.to > fullData.length - 2000 && (backtestStartIndex + fullData.length) < allData[currentTF].length;
 
     if (isLeft) {
         isShiftingData = true;
         let shiftAmount = Math.min(backtestChunkSize, backtestStartIndex);
         backtestStartIndex -= shiftAmount;
+        
         fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
+        
+        let curFrom = range.from;
+        let curTo = range.to;
+        
         series.setData(fullData);
-        chart.timeScale().setVisibleLogicalRange({ from: range.from + shiftAmount, to: range.to + shiftAmount });
-        setTimeout(() => { isShiftingData = false; }, 100);
+        
+        // Geser kamera agar tidak melompat
+        chart.timeScale().setVisibleLogicalRange({ 
+            from: curFrom + shiftAmount, 
+            to: curTo + shiftAmount 
+        });
+        
+        // Lepas kunci setelah setData selesai
+        setTimeout(() => { 
+            isShiftingData = false; 
+            // Panggil ulang untuk memastikan jika user masih di ujung, langsung render chunk berikutnya
+            checkBacktestShift(); 
+        }, 50);
+        
     } else if (isRight) {
         isShiftingData = true;
         let shiftAmount = Math.min(backtestChunkSize, allData[currentTF].length - (backtestStartIndex + fullData.length));
         backtestStartIndex += shiftAmount;
+        
         fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
+        
+        let curFrom = range.from;
+        let curTo = range.to;
+        
         series.setData(fullData);
-        chart.timeScale().setVisibleLogicalRange({ from: range.from - shiftAmount, to: range.to - shiftAmount });
-        setTimeout(() => { isShiftingData = false; }, 100);
+        
+        chart.timeScale().setVisibleLogicalRange({ 
+            from: curFrom - shiftAmount, 
+            to: curTo - shiftAmount 
+        });
+        
+        setTimeout(() => { 
+            isShiftingData = false; 
+            checkBacktestShift(); 
+        }, 50);
     }
 }
 
@@ -160,7 +196,8 @@ if (chart) {
         updateScissorsPosition();
         if (currentMode === 'backtest' && !isShiftingData) {
             clearTimeout(backtestScrollTimeout);
-            backtestScrollTimeout = setTimeout(checkBacktestShift, 200);
+            // Debounce diperkecil agar lebih responsif
+            backtestScrollTimeout = setTimeout(checkBacktestShift, 50);
         }
     });
 }
@@ -176,17 +213,17 @@ btnPlay.onclick = () => {
             currentReplayIndex++;
             series.update(fullData[currentReplayIndex - 1]); 
             
-            if (fullData[currentReplayIndex - 1]) {
-                simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+            let safeIdx = Math.max(0, currentReplayIndex - 1);
+            if (fullData[safeIdx]) {
+                simulationCurrentTime = fullData[safeIdx].time;
             }
 
             if (typeof checkTradeHits === 'function') checkTradeHits();
             checkChunkShift();
 
-            // Simpan state setiap Play berjalan
             if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
-            let currentCandleTime = fullData[currentReplayIndex - 1].time;
+            let currentCandleTime = fullData[safeIdx].time;
             if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
                 handleSessionEnd();
                 return;
@@ -209,17 +246,17 @@ btnStep.onclick = () => {
         currentReplayIndex++;
         series.update(fullData[currentReplayIndex - 1]);
         
-        if (fullData[currentReplayIndex - 1]) {
-            simulationCurrentTime = fullData[currentReplayIndex - 1].time;
+        let safeIdx = Math.max(0, currentReplayIndex - 1);
+        if (fullData[safeIdx]) {
+            simulationCurrentTime = fullData[safeIdx].time;
         }
 
         if (typeof checkTradeHits === 'function') checkTradeHits();
         checkChunkShift();
 
-        // Simpan state setiap Step
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
-        let currentCandleTime = fullData[currentReplayIndex - 1].time;
+        let currentCandleTime = fullData[safeIdx].time;
         if (currentMode === 'simulation' && simConfig.endTime !== null && currentCandleTime >= simConfig.endTime) {
             handleSessionEnd();
         }
