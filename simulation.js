@@ -8,6 +8,7 @@ function startSimulation() {
     simRiskPercent = simConfig.risk;
     tradeHistory = [];
     isSimulationRunning = true;
+    if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 }
 
 function checkTradeHits() {
@@ -71,7 +72,9 @@ function checkTradeHits() {
         }
     });
 
-    if (updated && typeof saveToLocalStorage === 'function') saveToLocalStorage();
+    if (updated && typeof saveToLocalStorage === 'function') {
+        saveToLocalStorage();
+    }
 }
 
 function closeTrade(drawing, exitPrice, status, exitTime) {
@@ -95,6 +98,8 @@ function closeTrade(drawing, exitPrice, status, exitTime) {
         entryTime: drawing.entryTime,
         exitTime: exitTime
     });
+    
+    if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 }
 
 function forceCloseAllTrades() {
