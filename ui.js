@@ -79,6 +79,7 @@ if (modeDropdown) {
                     btnMode.innerText = 'MODE ▼';
                     btnMode.style.background = '#485c7b';
                     updateModeDropdownUI();
+                    isMonthlyMode = false; // Matikan mode bulanan
                     
                     backtestStartIndex = Math.max(0, allData[currentTF].length - (backtestChunkSize * 3));
                     fullData = allData[currentTF].slice(backtestStartIndex);
@@ -265,6 +266,7 @@ document.getElementById('btn-start-sim').onclick = async () => {
     let startTs = Math.floor(new Date(startDateStr + 'T00:00:00Z').getTime() / 1000);
     let endTs = Math.floor(new Date(endDateStr + 'T23:59:59Z').getTime() / 1000);
     let startYear = new Date(startDateStr + 'T00:00:00Z').getUTCFullYear();
+    let startMonth = new Date(startDateStr + 'T00:00:00Z').getUTCMonth() + 1;
 
     if (startTs >= endTs) { alert("Tanggal Mulai harus lebih awal!"); return; }
 
@@ -274,22 +276,31 @@ document.getElementById('btn-start-sim').onclick = async () => {
     setupModal.style.display = 'none';
     overlay.style.display = 'flex';
     bar.style.width = '0%';
-    text.innerText = `Menyiapkan data tahun ${startYear}...`;
+
+    // TENTUKAN MODE BULANAN
+    isMonthlyMode = (startYear === 2013 && (currentTF === 'M1' || currentTF === 'M5'));
+    currentLoadedYear = startYear;
+    currentLoadedMonth = startMonth;
+
+    text.innerText = isMonthlyMode ? `Menyiapkan data bulan ke-${startMonth}...` : `Menyiapkan data tahun ${startYear}...`;
 
     try {
         let isDataReady = false;
         if (allData[currentTF] && allData[currentTF].length > 0) {
             let currentDataYear = new Date(allData[currentTF][0].time * 1000).getUTCFullYear();
-            if (currentDataYear === startYear) {
+            if (currentDataYear === startYear && !isMonthlyMode) {
                 isDataReady = true;
             }
         }
 
         if (!isDataReady) {
-            const rawData = await loadDataScript(currentTF, startYear);
+            const rawData = isMonthlyMode 
+                ? await loadDataScript(currentTF, startYear, startMonth)
+                : await loadDataScript(currentTF, startYear);
+                
             allData[currentTF] = await parseAoAAsync(rawData, (pct) => {
                 bar.style.width = pct + '%';
-                text.innerText = `Memuat data ${startYear}... ${pct}%`;
+                text.innerText = isMonthlyMode ? `Memuat data... ${pct}%` : `Memuat data ${startYear}... ${pct}%`;
             });
         }
 
@@ -309,13 +320,9 @@ document.getElementById('btn-start-sim').onclick = async () => {
         fullData = sourceData.slice(absoluteStartIndex, maxLoadedIndex);
         currentReplayIndex = startIdx - absoluteStartIndex;
 
-        // PERBAIKAN: Gunakan Math.max agar index 0 tidak menghasilkan undefined
+        // PERBAIKAN: Memastikan waktu tidak pernah null
         let safeIdx = Math.max(0, currentReplayIndex - 1);
-        if (fullData[safeIdx]) {
-            simulationCurrentTime = fullData[safeIdx].time;
-        } else {
-            simulationCurrentTime = startTs;
-        }
+        simulationCurrentTime = fullData[safeIdx] ? fullData[safeIdx].time : startTs;
 
         drawings = drawings.filter(d => !d.type.startsWith('position'));
         selectedDrawing = null;
@@ -359,7 +366,7 @@ document.addEventListener('click', () => {
     if (modeDropdown) modeDropdown.style.display = 'none';
 });
 
-// [FUNGSI renderHistoryDashboard DIAMBIL DARI VERSI SEBELUMNYA YANG SUDAH LENGKAP]
+// (FUNGSI renderHistoryDashboard, FLOATING MENU, DLL TETAP SAMA)
 function renderHistoryDashboard() {
     let totalPnl = simBalance - simConfig.balance;
     let totalTrades = tradeHistory.length;
