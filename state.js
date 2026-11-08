@@ -65,6 +65,5 @@ let isMonthlyMode = false;
 let currentLoadedMonth = 1;
 let currentLoadedYear = 2013;
 let isLoadingNextMonth = false;
-
-// UNTUK PRE-FETCHING
+let isLoadingNextYear = false;
 let prefetchedYears = {}; 
