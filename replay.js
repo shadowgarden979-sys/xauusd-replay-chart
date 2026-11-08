@@ -131,27 +131,22 @@ function checkChunkShift() {
     }
 }
 
-// FUNGSI BARU: Memuat data bulan berikutnya secara diam-diam
 async function checkMonthlyLoad() {
     if (!isMonthlyMode || currentMode !== 'simulation' || isLoadingNextMonth) return;
-    if (currentLoadedMonth >= 12) return; // Jika sudah Desember, tidak ada bulan depan di tahun yang sama
+    if (currentLoadedMonth >= 12) return;
 
-    // Jika index replay sudah mencapai 80% dari total allData yang saat ini dimuat
     let threshold = allData[currentTF].length * 0.8;
     if (currentReplayIndex > threshold) {
         isLoadingNextMonth = true;
         let nextMonth = currentLoadedMonth + 1;
         
         try {
-            // Muat data bulan depan
             const rawData = await loadDataScript(currentTF, currentLoadedYear, nextMonth);
             const parsedData = await parseAoAAsync(rawData);
             
-            // Sambungkan ke allData
             allData[currentTF] = allData[currentTF].concat(parsedData);
             currentLoadedMonth = nextMonth;
             
-            // Perbarui fullData agar Chunking window ikut tahu ada data baru
             let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
             fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
             
@@ -159,6 +154,33 @@ async function checkMonthlyLoad() {
             console.warn("Gagal memuat bulan berikutnya: ", err);
         } finally {
             isLoadingNextMonth = false;
+        }
+    }
+}
+
+// FUNGSI BARU: PRE-FETCH TAHUN DEPAN
+async function prefetchNextYear(currentTime) {
+    if (currentMode !== 'simulation') return;
+    let dt = new Date(currentTime * 1000);
+    let year = dt.getUTCFullYear();
+    let month = dt.getUTCMonth() + 1;
+    
+    // Jika sudah masuk bulan November (11) atau Desember (12)
+    if (month >= 11) {
+        let nextYear = year + 1;
+        const tfs = ['M15', 'H1', 'H4', 'D1', 'M1', 'M5'];
+        
+        for (let tf of tfs) {
+            if (!availableYears[tf] || !availableYears[tf].includes(nextYear)) continue;
+            if (prefetchedYears[tf + '_' + nextYear]) continue; // Sudah di-prefetch
+            
+            prefetchedYears[tf + '_' + nextYear] = true;
+            try {
+                await loadDataScript(tf, nextYear);
+                console.log(`Pre-fetch ${tf} ${nextYear} berhasil.`);
+            } catch(e) {
+                console.warn(`Pre-fetch ${tf} ${nextYear} gagal.`);
+            }
         }
     }
 }
@@ -182,16 +204,9 @@ function checkBacktestShift() {
         let curTo = range.to;
         
         series.setData(fullData);
+        chart.timeScale().setVisibleLogicalRange({ from: curFrom + shiftAmount, to: curTo + shiftAmount });
         
-        chart.timeScale().setVisibleLogicalRange({ 
-            from: curFrom + shiftAmount, 
-            to: curTo + shiftAmount 
-        });
-        
-        setTimeout(() => { 
-            isShiftingData = false; 
-            checkBacktestShift(); 
-        }, 50);
+        setTimeout(() => { isShiftingData = false; checkBacktestShift(); }, 50);
         
     } else if (isRight) {
         isShiftingData = true;
@@ -204,16 +219,9 @@ function checkBacktestShift() {
         let curTo = range.to;
         
         series.setData(fullData);
+        chart.timeScale().setVisibleLogicalRange({ from: curFrom - shiftAmount, to: curTo - shiftAmount });
         
-        chart.timeScale().setVisibleLogicalRange({ 
-            from: curFrom - shiftAmount, 
-            to: curTo - shiftAmount 
-        });
-        
-        setTimeout(() => { 
-            isShiftingData = false; 
-            checkBacktestShift(); 
-        }, 50);
+        setTimeout(() => { isShiftingData = false; checkBacktestShift(); }, 50);
     }
 }
 
@@ -246,12 +254,14 @@ btnPlay.onclick = () => {
 
             if (typeof checkTradeHits === 'function') checkTradeHits();
             
-            // Cek pemuatan bulan berikutnya (background)
             if (isMonthlyMode && !isLoadingNextMonth) {
                 checkMonthlyLoad();
             } else {
                 checkChunkShift();
             }
+
+            // CEK PRE-FETCH TAHUN DEPAN
+            prefetchNextYear(simulationCurrentTime);
 
             if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
@@ -290,6 +300,9 @@ btnStep.onclick = () => {
         } else {
             checkChunkShift();
         }
+
+        // CEK PRE-FETCH TAHUN DEPAN
+        prefetchNextYear(simulationCurrentTime);
 
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
 
