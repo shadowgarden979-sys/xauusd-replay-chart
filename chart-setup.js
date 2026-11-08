@@ -68,7 +68,6 @@ function loadDataScript(tf, year, month = null) {
     return loadingPromises[varName];
 }
 
-// FUNGSI BARU: PRE-FETCH TF LAIN DI LATAR BELAKANG
 async function prefetchOtherTFs(year) {
     const tfs = ['M15', 'H1', 'H4', 'D1', 'M1', 'M5'].filter(t => t !== currentTF);
     for (let tf of tfs) {
@@ -86,6 +85,59 @@ async function prefetchOtherTFs(year) {
         } catch(e) { 
             console.warn(`Pre-fetch gagal untuk ${tf} ${year}`); 
         }
+    }
+}
+
+async function prefetchNextYear(currentTime) {
+    if (currentMode !== 'simulation') return;
+    let dt = new Date(currentTime * 1000);
+    let year = dt.getUTCFullYear();
+    let month = dt.getUTCMonth() + 1;
+    
+    if (month >= 11) {
+        let nextYear = year + 1;
+        const tfs = ['M15', 'H1', 'H4', 'D1', 'M1', 'M5'];
+        
+        for (let tf of tfs) {
+            if (!availableYears[tf] || !availableYears[tf].includes(nextYear)) continue;
+            if (prefetchedYears[tf + '_' + nextYear]) continue;
+            
+            prefetchedYears[tf + '_' + nextYear] = true;
+            try {
+                await loadDataScript(tf, nextYear);
+            } catch(e) {}
+        }
+    }
+}
+
+// FUNGSI BARU: MENYAMBUNGKAN DATA TAHUN DEPAN KE CHART
+async function transitionToNextYear() {
+    if (isLoadingNextYear) return false;
+    let nextYear = currentLoadedYear + 1;
+    if (!availableYears[currentTF] || !availableYears[currentTF].includes(nextYear)) {
+        return false;
+    }
+
+    isLoadingNextYear = true;
+    try {
+        const rawData = await loadDataScript(currentTF, nextYear);
+        const parsedData = await parseAoAAsync(rawData);
+        
+        allData[currentTF] = allData[currentTF].concat(parsedData);
+        
+        let maxLoadedIndex = Math.min(allData[currentTF].length, absoluteStartIndex + (currentChunkSize * 3));
+        fullData = allData[currentTF].slice(absoluteStartIndex, maxLoadedIndex);
+        
+        currentLoadedYear = nextYear;
+        currentLoadedMonth = 1;
+        isMonthlyMode = false; // 2014 ke atas kembali ke mode tahunan
+
+        isLoadingNextYear = false;
+        return true;
+    } catch (e) {
+        console.error("Failed to transition year", e);
+        isLoadingNextYear = false;
+        return false;
     }
 }
 
@@ -404,8 +456,6 @@ async function initApp() {
         if (typeof render === 'function') render();
         if (typeof updateModeDropdownUI === 'function') updateModeDropdownUI();
         if (typeof updateScissorsVisibility === 'function') updateScissorsVisibility();
-        
-        // TRIGGER PRE-FETCH TF LAIN SAAT APP DIBUKA
         if (targetYear) prefetchOtherTFs(targetYear);
     }, 500);
 }
