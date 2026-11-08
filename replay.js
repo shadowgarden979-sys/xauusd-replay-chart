@@ -158,73 +158,6 @@ async function checkMonthlyLoad() {
     }
 }
 
-// FUNGSI BARU: PRE-FETCH TAHUN DEPAN
-async function prefetchNextYear(currentTime) {
-    if (currentMode !== 'simulation') return;
-    let dt = new Date(currentTime * 1000);
-    let year = dt.getUTCFullYear();
-    let month = dt.getUTCMonth() + 1;
-    
-    // Jika sudah masuk bulan November (11) atau Desember (12)
-    if (month >= 11) {
-        let nextYear = year + 1;
-        const tfs = ['M15', 'H1', 'H4', 'D1', 'M1', 'M5'];
-        
-        for (let tf of tfs) {
-            if (!availableYears[tf] || !availableYears[tf].includes(nextYear)) continue;
-            if (prefetchedYears[tf + '_' + nextYear]) continue; // Sudah di-prefetch
-            
-            prefetchedYears[tf + '_' + nextYear] = true;
-            try {
-                await loadDataScript(tf, nextYear);
-                console.log(`Pre-fetch ${tf} ${nextYear} berhasil.`);
-            } catch(e) {
-                console.warn(`Pre-fetch ${tf} ${nextYear} gagal.`);
-            }
-        }
-    }
-}
-
-function checkBacktestShift() {
-    if (!chart || currentMode !== 'backtest' || isShiftingData) return;
-    let range = chart.timeScale().getVisibleLogicalRange();
-    if (!range) return;
-
-    let isLeft = range.from < 2000 && backtestStartIndex > 0;
-    let isRight = range.to > fullData.length - 2000 && (backtestStartIndex + fullData.length) < allData[currentTF].length;
-
-    if (isLeft) {
-        isShiftingData = true;
-        let shiftAmount = Math.min(backtestChunkSize, backtestStartIndex);
-        backtestStartIndex -= shiftAmount;
-        
-        fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
-        
-        let curFrom = range.from;
-        let curTo = range.to;
-        
-        series.setData(fullData);
-        chart.timeScale().setVisibleLogicalRange({ from: curFrom + shiftAmount, to: curTo + shiftAmount });
-        
-        setTimeout(() => { isShiftingData = false; checkBacktestShift(); }, 50);
-        
-    } else if (isRight) {
-        isShiftingData = true;
-        let shiftAmount = Math.min(backtestChunkSize, allData[currentTF].length - (backtestStartIndex + fullData.length));
-        backtestStartIndex += shiftAmount;
-        
-        fullData = allData[currentTF].slice(backtestStartIndex, backtestStartIndex + (backtestChunkSize * 3));
-        
-        let curFrom = range.from;
-        let curTo = range.to;
-        
-        series.setData(fullData);
-        chart.timeScale().setVisibleLogicalRange({ from: curFrom - shiftAmount, to: curTo - shiftAmount });
-        
-        setTimeout(() => { isShiftingData = false; checkBacktestShift(); }, 50);
-    }
-}
-
 let backtestScrollTimeout = null;
 if (chart) {
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
@@ -242,7 +175,19 @@ btnPlay.onclick = () => {
     isPlaying = true;
     updateScissorsVisibility(); 
     
-    playInterval = setInterval(() => {
+    playInterval = setInterval(async () => {
+        if (isLoadingNextYear) return; // Tunggu jika sedang memuat tahun depan
+
+        // CEK TRANSISI TAHUN JIKA SUDAH DI UJUNG DATA
+        if (currentReplayIndex >= fullData.length - 1) {
+            let success = await transitionToNextYear();
+            if (!success) {
+                pauseReplay();
+                if (currentMode === 'simulation') handleSessionEnd();
+                return;
+            }
+        }
+
         if (currentReplayIndex < fullData.length) {
             currentReplayIndex++;
             series.update(fullData[currentReplayIndex - 1]); 
@@ -260,7 +205,6 @@ btnPlay.onclick = () => {
                 checkChunkShift();
             }
 
-            // CEK PRE-FETCH TAHUN DEPAN
             prefetchNextYear(simulationCurrentTime);
 
             if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
@@ -270,10 +214,6 @@ btnPlay.onclick = () => {
                 handleSessionEnd();
                 return;
             }
-            if (currentReplayIndex >= fullData.length) {
-                pauseReplay();
-                if (currentMode === 'simulation') handleSessionEnd();
-            }
         } else {
             pauseReplay();
         }
@@ -282,8 +222,15 @@ btnPlay.onclick = () => {
 
 btnPause.onclick = pauseReplay;
 
-btnStep.onclick = () => {
+btnStep.onclick = async () => {
     if (!isReplayMode) { alert("Aktifkan Set Replay dulu!"); return; }
+    if (isLoadingNextYear) return; 
+
+    if (currentReplayIndex >= fullData.length - 1) {
+        let success = await transitionToNextYear();
+        if (!success) return; // Jika tidak ada tahun depan, berhenti
+    }
+
     if (currentReplayIndex < fullData.length) {
         currentReplayIndex++;
         series.update(fullData[currentReplayIndex - 1]);
@@ -301,7 +248,6 @@ btnStep.onclick = () => {
             checkChunkShift();
         }
 
-        // CEK PRE-FETCH TAHUN DEPAN
         prefetchNextYear(simulationCurrentTime);
 
         if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
