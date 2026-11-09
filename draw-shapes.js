@@ -33,7 +33,6 @@ function updateDateHUD() {
 }
 
 function drawWarnings() {
-    // PERBAIKAN: Batasi limit agar tidak melebihi fullData.length
     let limit = isReplayMode ? Math.min(currentReplayIndex - 1, fullData.length - 1) : fullData.length - 1;
     if (limit < 0 || !chart) return;
 
@@ -48,7 +47,7 @@ function drawWarnings() {
         
         for (let i = 0; i <= limit; i++) {
             let c = fullData[i];
-            if (!c) continue; // Pengaman ganda
+            if (!c) continue;
             
             let d = new Date(c.time * 1000);
             let day = d.getUTCDay(); 
@@ -117,8 +116,9 @@ function drawMeasureTool() {
     fgCtx.fillText(text, boxX + (textWidth + 10) / 2, boxY + 10);
 }
 
+// PERBAIKAN 2: Mengizinkan Backtest menghitung garis meskipun status pending
 function calculateTradeLine(d) {
-    if (d.status === 'pending') return null;
+    if (d.status === 'pending' && currentMode === 'simulation') return null;
 
     let startTime = d.entryTime ? d.entryTime : d.start.time;
     let endTime = d.status === 'closed' && d.exitTime ? d.exitTime : d.end.time;
@@ -150,7 +150,18 @@ function calculateTradeLine(d) {
 
     if (maxIdx < 0 || entryIndex > maxIdx) return null;
 
-    let hitEntryIndex = entryIndex; 
+    let hitEntryIndex = null;
+    for (let i = entryIndex; i <= maxIdx; i++) {
+        let c = fullData[i];
+        if (c.low <= d.start.price + 0.05 && c.high >= d.start.price - 0.05) { 
+            hitEntryIndex = i; break; 
+        }
+    }
+    
+    if (hitEntryIndex === null) return null; 
+
+    let hitExitIndex = null, hitExitPrice = null;
+    let isLong = d.type === 'position-long';
 
     if (d.status === 'closed' && d.exitTime) {
         let exitIdx = maxIdx;
@@ -159,9 +170,6 @@ function calculateTradeLine(d) {
         }
         return { startIdx: hitEntryIndex, endIdx: exitIdx, endPrice: d.exitPrice };
     }
-
-    let hitExitIndex = null, hitExitPrice = null;
-    let isLong = d.type === 'position-long';
 
     for (let i = hitEntryIndex; i <= maxIdx; i++) {
         let c = fullData[i];
@@ -191,11 +199,9 @@ function drawPositionBg(d) {
     const isPending = d.status === 'pending';
     const isClosed = d.status === 'closed';
 
+    // PERBAIKAN 1: Menghormati settingan opacity dari user
     let baseOp = d.baseOpacity !== undefined ? d.baseOpacity : 0.1;
     let activeOp = d.activeOpacity !== undefined ? d.activeOpacity : 0.4;
-    
-    if (isClosed) { baseOp = 0.1; activeOp = 0.1; }
-    else if (isPending) { baseOp = 0.05; activeOp = 0.2; }
 
     bgCtx.fillStyle = `rgba(38, 166, 154, ${baseOp})`;
     bgCtx.beginPath(); bgCtx.rect(x1, yTP, x2 - x1, yEntry - yTP); bgCtx.fill();
@@ -217,7 +223,8 @@ function drawPositionBg(d) {
             bgCtx.fillStyle = d.pnl >= 0 ? 'rgba(38, 166, 154, 0.8)' : 'rgba(239, 83, 80, 0.8)';
             bgCtx.beginPath(); bgCtx.arc(xExit, yExit, 4, 0, Math.PI * 2); bgCtx.fill();
         }
-    } else if (!isPending) { 
+    } else if (!isPending || currentMode === 'backtest') { 
+        // PERBAIKAN 2: Backtest tetap menggambar area tegas
         const tradeInfo = calculateTradeLine(d);
         if (tradeInfo) {
             const xStart = getX(fullData[tradeInfo.startIdx].time);
@@ -266,7 +273,7 @@ function drawPositionBg(d) {
     fgCtx.fillText(`R:R ${rrText}`, xEntry - 15, yEntry);
 
     fgCtx.font = '11px sans-serif';
-    if (isPending) {
+    if (isPending && currentMode === 'simulation') {
         fgCtx.fillStyle = '#d1d4dc';
         fgCtx.fillText(`PENDING`, xEntry - 15, yEntry + 15);
     } else if (d.status === 'active') {
